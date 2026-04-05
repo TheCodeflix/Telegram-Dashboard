@@ -215,31 +215,68 @@ async function revokeInviteLink(inviteLink, btnEl) {
 // ─── Transfer ownership ───────────────────────────────────────────────────────
 
 function openTransferModal() {
+    // Reset fields
+    const uid = document.getElementById('transferUserId');
+    const pwd = document.getElementById('transferPassword');
+    const err = document.getElementById('transferError');
+    if (uid) uid.value = '';
+    if (pwd) pwd.value = '';
+    if (err) { err.classList.add('d-none'); err.textContent = ''; }
     const modal = new bootstrap.Modal(document.getElementById('transferModal'));
     modal.show();
 }
 
+function togglePasswordVisibility(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    const icon = btnEl.querySelector('i');
+    if (icon) {
+        icon.classList.toggle('fa-eye', !isHidden);
+        icon.classList.toggle('fa-eye-slash', isHidden);
+    }
+}
+
 async function submitTransfer(btnEl) {
-    const input = document.getElementById('transferUserId');
-    const targetUserId = (input ? input.value : '').trim();
-    if (!targetUserId) { showToast('Please enter a User ID.', 'warning'); return; }
+    const uidInput = document.getElementById('transferUserId');
+    const pwdInput = document.getElementById('transferPassword');
+    const errBox   = document.getElementById('transferError');
+
+    const targetUserId = (uidInput ? uidInput.value : '').trim();
+    const password     = (pwdInput ? pwdInput.value : '').trim();
+
+    function showInlineError(msg) {
+        if (errBox) {
+            errBox.textContent = msg;
+            errBox.classList.remove('d-none');
+        } else {
+            showToast(msg, 'danger');
+        }
+    }
+
+    if (errBox) errBox.classList.add('d-none');
+    if (!targetUserId) { showInlineError('Please enter the target User ID.'); return; }
+    if (!password)     { showInlineError('Please enter your 2FA password.'); return; }
+
+    if (!confirm('Are you sure? This will permanently transfer ownership. This action cannot be undone.')) return;
 
     setLoading(btnEl, true);
     try {
         const res = await fetch(`${channelApiBase()}/transfer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_user_id: targetUserId }),
+            body: JSON.stringify({ target_user_id: targetUserId, password }),
         });
         const data = await res.json();
         if (data.success) {
             bootstrap.Modal.getInstance(document.getElementById('transferModal'))?.hide();
-            showToast('Ownership transferred!', 'success');
+            showToast('Ownership transferred successfully!', 'success');
         } else {
-            showToast(data.error, 'warning');
+            showInlineError(data.error || 'Transfer failed.');
         }
     } catch (e) {
-        showToast('Network error: ' + e.message, 'danger');
+        showInlineError('Network error: ' + e.message);
     } finally {
         setLoading(btnEl, false);
     }

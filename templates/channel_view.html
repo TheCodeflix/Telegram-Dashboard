@@ -388,29 +388,45 @@
 <div class="modal fade" id="transferModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header bg-warning bg-opacity-10">
                 <h5 class="modal-title">
                     <i class="fas fa-crown me-2 text-warning"></i>Transfer Ownership
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-warning">
-                    <strong>Warning:</strong> This action transfers permanent ownership of the channel.
-                    You will lose your owner privileges. This requires Telegram 2FA and may fail here —
-                    use the official Telegram app for ownership transfers.
+                <div class="alert alert-danger d-flex gap-2 align-items-start">
+                    <i class="fas fa-exclamation-triangle mt-1 flex-shrink-0"></i>
+                    <div>
+                        <strong>Irreversible Action!</strong> Ownership will be permanently transferred.
+                        You will lose all owner privileges. The new owner must already be an admin
+                        of this chat and must be in your mutual contacts.
+                    </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold">Target User ID</label>
+                    <label class="form-label fw-semibold">New Owner — Telegram User ID</label>
                     <input type="number" id="transferUserId" class="form-control"
                            placeholder="e.g. 123456789">
-                    <div class="form-text">The numeric Telegram user ID of the new owner.</div>
+                    <div class="form-text">Numeric Telegram user ID of the new owner (must be an existing admin).</div>
                 </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Your 2FA Password</label>
+                    <div class="input-group">
+                        <input type="password" id="transferPassword" class="form-control"
+                               placeholder="Your Telegram 2FA password">
+                        <button class="btn btn-outline-secondary" type="button"
+                                onclick="togglePasswordVisibility('transferPassword', this)">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">Required by Telegram to authorize this action.</div>
+                </div>
+                <div id="transferError" class="alert alert-danger d-none"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" onclick="submitTransfer(this)">
-                    <i class="fas fa-exchange-alt me-1"></i>Transfer
+                <button type="button" class="btn btn-danger" onclick="submitTransfer(this)">
+                    <i class="fas fa-exchange-alt me-1"></i>Transfer Ownership
                 </button>
             </div>
         </div>
