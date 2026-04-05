@@ -564,6 +564,19 @@ async def _finalize_session(client: Client, message: Message, user_id: int):
         )
 
 
+# ─── Debug: Catch-All Handler ─────────────────────────────────────────────────
+
+@bot.on_message(group=99)
+async def debug_all_messages(client: Client, message: Message):
+    logger.info(
+        "DEBUG incoming message: chat_type=%s chat_id=%s user_id=%s text=%r",
+        message.chat.type if message.chat else None,
+        message.chat.id if message.chat else None,
+        message.from_user.id if message.from_user else None,
+        (message.text or "")[:100],
+    )
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 async def main():
