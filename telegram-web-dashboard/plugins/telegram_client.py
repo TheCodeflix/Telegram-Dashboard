@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import base64
 from pyrogram import Client
 from pyrogram.enums import ChatType
 from pyrogram.errors import FloodWait
@@ -20,6 +21,8 @@ def create_client(session_string: str) -> Client:
         in_memory=True,
     )
 
+
+# ─── Async operations ─────────────────────────────────────────────────────────
 
 async def _get_user_info(client: Client) -> dict:
     me = await client.get_me()
@@ -100,10 +103,14 @@ async def _get_channel_admins(client: Client, channel_id: int) -> list:
     return admins
 
 
-async def _get_channel_members(client: Client, channel_id: int, limit: int = 50) -> list:
+async def _get_channel_members(client: Client, channel_id: int, limit: int = 50, offset: int = 0) -> dict:
     members = []
     try:
-        async for member in client.get_chat_members(channel_id, limit=limit):
+        count = 0
+        async for member in client.get_chat_members(channel_id, limit=limit + offset):
+            if count < offset:
+                count += 1
+                continue
             user = member.user
             members.append({
                 "user_id": user.id,
@@ -112,21 +119,22 @@ async def _get_channel_members(client: Client, channel_id: int, limit: int = 50)
                 "is_bot": user.is_bot,
                 "status": str(member.status).split(".")[-1],
             })
+            if len(members) >= limit:
+                break
     except Exception as e:
         logger.warning("Error fetching members for %s: %s", channel_id, e)
-    return members
+    return {"members": members, "count": len(members), "offset": offset, "limit": limit}
 
 
-async def _get_channel_messages(client: Client, channel_id: int, limit: int = 30) -> list:
+async def _get_channel_messages(client: Client, channel_id: int, limit: int = 30, offset: int = 0) -> list:
     messages = []
     try:
-        async for msg in client.get_chat_history(channel_id, limit=limit):
+        async for msg in client.get_chat_history(channel_id, limit=limit, offset=offset):
             sender_name = ""
             if msg.from_user:
                 sender_name = _full_name(msg.from_user)
             elif msg.sender_chat:
                 sender_name = getattr(msg.sender_chat, "title", "") or ""
-
             messages.append({
                 "id": msg.id,
                 "text": msg.text or msg.caption or "",
@@ -135,18 +143,74 @@ async def _get_channel_messages(client: Client, channel_id: int, limit: int = 30
                 "views": getattr(msg, "views", None),
                 "is_pinned": getattr(msg, "pinned", False),
                 "has_media": bool(msg.media),
+                "media_type": str(msg.media).split(".")[-1] if msg.media else None,
             })
     except Exception as e:
         logger.warning("Error fetching messages for %s: %s", channel_id, e)
     return messages
 
 
-# ─── Public sync wrappers (for Flask routes) ─────────────────────────────────
+async def _get_pinned_messages(client: Client, channel_id: int) -> list:
+    pinned = []
+    try:
+        async for msg in client.get_chat_history(channel_id, limit=100):
+            if getattr(msg, "pinned", False):
+                sender_name = ""
+                if msg.from_user:
+                    sender_name = _full_name(msg.from_user)
+                elif msg.sender_chat:
+                    sender_name = getattr(msg.sender_chat, "title", "") or ""
+                pinned.append({
+                    "id": msg.id,
+                    "text": msg.text or msg.caption or "",
+                    "date": msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else "",
+                    "sender": sender_name,
+                    "has_media": bool(msg.media),
+                })
+    except Exception as e:
+        logger.warning("Error fetching pinned messages for %s: %s", channel_id, e)
+    return pinned
+
+
+async def _create_invite_link(client: Client, channel_id: int,
+                               expire_date=None, member_limit=None) -> str:
+    link = await client.create_chat_invite_link(
+        channel_id,
+        expire_date=expire_date,
+        member_limit=member_limit,
+    )
+    return link.invite_link
+
+
+async def _revoke_invite_link(client: Client, channel_id: int, invite_link: str) -> bool:
+    await client.revoke_chat_invite_link(channel_id, invite_link)
+    return True
+
+
+async def _delete_message(client: Client, channel_id: int, message_id: int) -> bool:
+    await client.delete_messages(channel_id, message_id)
+    return True
+
+
+async def _get_chat_photo(client: Client, chat_id: int):
+    """Download chat photo and return base64 data URI, or None."""
+    try:
+        path = await client.download_profile_photo(chat_id, in_memory=True)
+        if path:
+            data = path.getvalue()
+            b64 = base64.b64encode(data).decode()
+            return f"data:image/jpeg;base64,{b64}"
+    except Exception as e:
+        logger.debug("Could not download chat photo for %s: %s", chat_id, e)
+    return None
+
+
+# ─── Public sync wrappers ────────────────────────────────────────────────────
 
 def run_in_session(session_string: str, coro_factory):
     """
-    Creates a Pyrogram client, connects, runs coro_factory(client),
-    disconnects, and returns the result. Runs in a fresh event loop.
+    Creates a fresh Pyrogram client, connects, runs coro_factory(client),
+    disconnects, and returns the result. Always runs in a brand-new event loop.
     """
     async def _runner():
         client = create_client(session_string)
@@ -177,18 +241,66 @@ def get_channel_full(session_string: str, channel_id: int) -> dict:
     async def _all(client):
         info = await _get_channel_info(client, channel_id)
         admins = await _get_channel_admins(client, channel_id)
-        members = await _get_channel_members(client, channel_id)
-        messages = await _get_channel_messages(client, channel_id)
+        members_data = await _get_channel_members(client, channel_id, limit=50)
+        messages = await _get_channel_messages(client, channel_id, limit=30)
+        photo = await _get_chat_photo(client, channel_id)
         return {
             "info": info,
             "admins": admins,
-            "members": members,
+            "members": members_data.get("members", []),
             "messages": messages,
+            "photo": photo,
         }
     return run_in_session(session_string, _all)
 
 
-# ─── Internal helpers ─────────────────────────────────────────────────────────
+def get_channel_members_page(session_string: str, channel_id: int,
+                              limit: int = 50, offset: int = 0) -> dict:
+    return run_in_session(
+        session_string,
+        lambda c: _get_channel_members(c, channel_id, limit=limit, offset=offset)
+    )
+
+
+def get_channel_messages_page(session_string: str, channel_id: int,
+                               limit: int = 30, offset: int = 0) -> list:
+    return run_in_session(
+        session_string,
+        lambda c: _get_channel_messages(c, channel_id, limit=limit, offset=offset)
+    )
+
+
+def get_pinned_messages(session_string: str, channel_id: int) -> list:
+    return run_in_session(session_string, lambda c: _get_pinned_messages(c, channel_id))
+
+
+def create_invite_link(session_string: str, channel_id: int,
+                        expire_date=None, member_limit=None) -> str:
+    return run_in_session(
+        session_string,
+        lambda c: _create_invite_link(c, channel_id, expire_date, member_limit)
+    )
+
+
+def revoke_invite_link(session_string: str, channel_id: int, invite_link: str) -> bool:
+    return run_in_session(
+        session_string,
+        lambda c: _revoke_invite_link(c, channel_id, invite_link)
+    )
+
+
+def delete_message(session_string: str, channel_id: int, message_id: int) -> bool:
+    return run_in_session(
+        session_string,
+        lambda c: _delete_message(c, channel_id, message_id)
+    )
+
+
+def get_chat_photo(session_string: str, chat_id: int):
+    return run_in_session(session_string, lambda c: _get_chat_photo(c, chat_id))
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _full_name(user) -> str:
     parts = [getattr(user, "first_name", "") or "", getattr(user, "last_name", "") or ""]

@@ -1,14 +1,14 @@
 import os
 import asyncio
 import logging
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Pyrogram's sync module calls asyncio.get_event_loop() at import time.
-# Importing here (main thread, where an event loop exists) ensures the module
-# is cached before Flask's threaded worker threads touch it.
+# Importing here (main thread) ensures the module is cached before Flask's
+# threaded worker threads touch it.
 try:
     loop = asyncio.get_event_loop()
     if loop.is_closed():
@@ -47,6 +47,17 @@ def get_db():
 
 with app.app_context():
     get_db()
+
+
+# ─── Shared helpers ───────────────────────────────────────────────────────────
+
+def _get_session_or_404(unique_link):
+    """Return (session_doc, None) on success or (None, error_response) on failure."""
+    from database import models
+    session = models.get_session_by_unique_id(unique_link)
+    if not session:
+        return None, (jsonify({"success": False, "error": "Invalid or expired link."}), 404)
+    return session, None
 
 
 # ─── Health & Home ────────────────────────────────────────────────────────────
@@ -126,12 +137,16 @@ def channel_view(unique_link, channel_id):
             message="Failed to fetch channel data. Please try again later."
         ), 503
 
+    members = channel_utils.format_members_list(data.get("members", []))
+    messages = channel_utils.format_messages_list(data.get("messages", []))
+
     return render_template(
         "channel_view.html",
         info=data.get("info", {}),
         admins=data.get("admins", []),
-        members=data.get("members", []),
-        messages=data.get("messages", []),
+        members=members,
+        messages=messages,
+        photo=data.get("photo"),
         unique_link=unique_link,
         channel_id=channel_id,
     )
@@ -186,6 +201,157 @@ def web_logout(unique_link):
         message="Logged out successfully. This dashboard link has been invalidated.",
         title="Logged Out"
     )
+
+
+# ─── AJAX: Generate invite link ───────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/invite", methods=["POST"])
+def channel_invite(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    try:
+        invite_link = telegram_client.create_invite_link(session["session_string"], channel_id)
+        logger.info("Invite link created for channel=%s unique_link=%s", channel_id, unique_link)
+        return jsonify({"success": True, "invite_link": invite_link})
+    except Exception as e:
+        logger.error("Failed to create invite link: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── AJAX: Revoke invite link ─────────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/revoke_invite", methods=["POST"])
+def channel_revoke_invite(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    invite_link = data.get("invite_link", "").strip()
+    if not invite_link:
+        return jsonify({"success": False, "error": "invite_link is required"}), 400
+
+    try:
+        telegram_client.revoke_invite_link(session["session_string"], channel_id, invite_link)
+        logger.info("Invite link revoked for channel=%s", channel_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("Failed to revoke invite link: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── AJAX: Transfer ownership ─────────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/transfer", methods=["POST"])
+def channel_transfer(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    target_user_id = data.get("target_user_id")
+    if not target_user_id:
+        return jsonify({"success": False, "error": "target_user_id is required"}), 400
+
+    try:
+        target_user_id = int(target_user_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "target_user_id must be a number"}), 400
+
+    # Ownership transfer requires the user's 2FA password via the Telegram API.
+    # This is intentionally not implemented server-side for security reasons.
+    # Advise user to use the official Telegram app for this action.
+    return jsonify({
+        "success": False,
+        "error": (
+            "Ownership transfer requires your Telegram 2FA password and cannot be performed "
+            "safely via the web dashboard. Please use the official Telegram app to transfer ownership."
+        )
+    }), 400
+
+
+# ─── AJAX: Delete message ─────────────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/delete_message", methods=["POST"])
+def channel_delete_message(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    message_id = data.get("message_id")
+    if not message_id:
+        return jsonify({"success": False, "error": "message_id is required"}), 400
+
+    try:
+        message_id = int(message_id)
+        telegram_client.delete_message(session["session_string"], channel_id, message_id)
+        logger.info("Message %s deleted in channel=%s", message_id, channel_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error("Failed to delete message %s: %s", message_id, e)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── AJAX: Members pagination ─────────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/members", methods=["GET"])
+def channel_members_ajax(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    page = max(1, int(request.args.get("page", 1)))
+    limit = min(100, max(10, int(request.args.get("limit", 50))))
+    offset = (page - 1) * limit
+
+    try:
+        result = telegram_client.get_channel_members_page(
+            session["session_string"], channel_id, limit=limit, offset=offset
+        )
+        members = channel_utils.format_members_list(result.get("members", []))
+        return jsonify({
+            "success": True,
+            "members": members,
+            "count": len(members),
+            "page": page,
+            "limit": limit,
+            "offset": offset,
+        })
+    except Exception as e:
+        logger.error("Failed to fetch members page for channel=%s: %s", channel_id, e)
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── AJAX: Messages pagination ────────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int:channel_id>/messages", methods=["GET"])
+def channel_messages_ajax(unique_link, channel_id):
+    session, err = _get_session_or_404(unique_link)
+    if err:
+        return err
+
+    page = max(1, int(request.args.get("page", 1)))
+    limit = min(100, max(10, int(request.args.get("limit", 30))))
+    offset = (page - 1) * limit
+
+    try:
+        raw = telegram_client.get_channel_messages_page(
+            session["session_string"], channel_id, limit=limit, offset=offset
+        )
+        messages = channel_utils.format_messages_list(raw)
+        return jsonify({
+            "success": True,
+            "messages": messages,
+            "count": len(messages),
+            "page": page,
+            "limit": limit,
+        })
+    except Exception as e:
+        logger.error("Failed to fetch messages page for channel=%s: %s", channel_id, e)
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

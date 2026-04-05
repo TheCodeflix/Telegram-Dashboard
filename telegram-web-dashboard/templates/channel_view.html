@@ -1,18 +1,28 @@
 {% extends "base.html" %}
 {% block title %}{{ info.title or "Channel" }} — Telegram Dashboard{% endblock %}
 
+{# Pass context to JS via data attributes on body #}
 {% block extra_head %}
 <style>
-.channel-header { background: linear-gradient(135deg,#0088cc,#005f99); color:#fff; border-radius:12px; }
 .tab-pane { padding-top: 1.25rem; }
-.member-avatar { width:36px; height:36px; border-radius:50%; background:#0088cc;
-    display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:.9rem; }
-.msg-card { border-left: 3px solid #0088cc; }
-.admin-badge { font-size:.7rem; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+{# JS context — read by script.js #}
+<span id="js-ctx"
+      data-unique-link="{{ unique_link }}"
+      data-channel-id="{{ channel_id }}"
+      style="display:none"></span>
+
+<script>
+(function() {
+    const ctx = document.getElementById('js-ctx');
+    document.body.dataset.uniqueLink = ctx.dataset.uniqueLink;
+    document.body.dataset.channelId  = ctx.dataset.channelId;
+})();
+</script>
 
 {# ── Back ── #}
 <div class="mb-3">
@@ -24,21 +34,29 @@
 {# ── Channel Header ── #}
 <div class="channel-header p-4 mb-4">
     <div class="d-flex align-items-center gap-4 flex-wrap">
+        {% if photo %}
+        <img src="{{ photo }}" alt="{{ info.title }}"
+             style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.3);">
+        {% else %}
         <div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);
                     display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;">
             {{ (info.title or "?")[0]|upper }}
         </div>
+        {% endif %}
         <div>
             <h3 class="fw-bold mb-1">{{ info.title or "Unknown" }}</h3>
             {% if info.username %}
-            <div class="mb-1"><i class="fas fa-at me-1"></i>{{ info.username }}</div>
+            <div class="mb-1 opacity-90"><i class="fas fa-at me-1"></i>{{ info.username }}</div>
             {% endif %}
-            <div class="d-flex gap-3 flex-wrap mt-2">
+            <div class="d-flex gap-2 flex-wrap mt-2">
                 {% if info.member_count %}
-                <span><i class="fas fa-users me-1"></i>{{ "{:,}".format(info.member_count) }} members</span>
+                <span class="badge bg-light text-dark">
+                    <i class="fas fa-users me-1"></i>{{ "{:,}".format(info.member_count) }} members
+                </span>
                 {% endif %}
                 <span class="badge bg-light text-dark">{{ info.type|capitalize }}</span>
                 {% if info.is_verified %}<span class="badge bg-primary">✓ Verified</span>{% endif %}
+                {% if info.is_scam %}<span class="badge bg-danger">⚠ Scam</span>{% endif %}
             </div>
         </div>
     </div>
@@ -48,62 +66,128 @@
 </div>
 
 {# ── Tabs ── #}
-<ul class="nav nav-tabs mb-0" id="channelTabs">
-    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-info"><i class="fas fa-info-circle me-1"></i>Info</a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-admins"><i class="fas fa-shield-alt me-1"></i>Admins <span class="badge bg-secondary">{{ admins|length }}</span></a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-members"><i class="fas fa-users me-1"></i>Members <span class="badge bg-secondary">{{ members|length }}</span></a></li>
-    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-messages"><i class="fas fa-comment me-1"></i>Messages <span class="badge bg-secondary">{{ messages|length }}</span></a></li>
+<ul class="nav nav-tabs mb-0" id="channelTabs" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-info" role="tab">
+            <i class="fas fa-info-circle me-1"></i>Info
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-admins" role="tab">
+            <i class="fas fa-shield-alt me-1"></i>Admins
+            <span class="badge bg-secondary ms-1">{{ admins|length }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-members" role="tab">
+            <i class="fas fa-users me-1"></i>Members
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-messages" role="tab">
+            <i class="fas fa-comment me-1"></i>Messages
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-actions" role="tab">
+            <i class="fas fa-cog me-1"></i>Actions
+        </a>
+    </li>
 </ul>
 
-<div class="tab-content card border-top-0 rounded-top-0 p-3">
+<div class="tab-content card border-top-0 p-3">
 
-    {# Info Tab #}
-    <div class="tab-pane fade show active" id="tab-info">
+    {# ── Info Tab ── #}
+    <div class="tab-pane fade show active" id="tab-info" role="tabpanel">
         <div class="row g-3">
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body">
                         <h6 class="fw-bold mb-3"><i class="fas fa-info me-2 text-primary"></i>Details</h6>
                         <table class="table table-sm table-borderless mb-0">
-                            <tr><td class="text-muted fw-semibold" style="width:40%">Type</td><td>{{ info.type|capitalize }}</td></tr>
-                            <tr><td class="text-muted fw-semibold">Chat ID</td><td><code>{{ info.id }}</code></td></tr>
+                            <tr>
+                                <td class="text-muted fw-semibold" style="width:40%">Type</td>
+                                <td>{{ info.type|capitalize }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted fw-semibold">Chat ID</td>
+                                <td><code>{{ info.id }}</code></td>
+                            </tr>
                             {% if info.username %}
-                            <tr><td class="text-muted fw-semibold">Username</td><td>@{{ info.username }}</td></tr>
+                            <tr>
+                                <td class="text-muted fw-semibold">Username</td>
+                                <td>
+                                    <a href="https://t.me/{{ info.username }}" target="_blank">
+                                        @{{ info.username }}
+                                    </a>
+                                </td>
+                            </tr>
                             {% endif %}
                             {% if info.member_count %}
-                            <tr><td class="text-muted fw-semibold">Members</td><td>{{ "{:,}".format(info.member_count) }}</td></tr>
+                            <tr>
+                                <td class="text-muted fw-semibold">Members</td>
+                                <td>{{ "{:,}".format(info.member_count) }}</td>
+                            </tr>
                             {% endif %}
-                            <tr><td class="text-muted fw-semibold">Verified</td><td>{{ "Yes" if info.is_verified else "No" }}</td></tr>
+                            <tr>
+                                <td class="text-muted fw-semibold">Verified</td>
+                                <td>{{ "Yes" if info.is_verified else "No" }}</td>
+                            </tr>
                         </table>
                     </div>
                 </div>
             </div>
-            {% if info.invite_link %}
             <div class="col-md-6">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h6 class="fw-bold mb-3"><i class="fas fa-link me-2 text-success"></i>Invite Link</h6>
-                        <div class="input-group">
-                            <input type="text" class="form-control form-control-sm" value="{{ info.invite_link }}" readonly id="inviteLink">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="copyInvite()">
-                                <i class="fas fa-copy"></i>
+                        <h6 class="fw-bold mb-3">
+                            <i class="fas fa-link me-2 text-success"></i>Invite Links
+                        </h6>
+                        {% if info.invite_link %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small text-muted">Current Link</label>
+                            <div class="invite-link-box d-flex align-items-center gap-2">
+                                <input id="currentInviteLink" type="text"
+                                       class="form-control form-control-sm"
+                                       value="{{ info.invite_link }}" readonly>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        onclick="copyInputValue('currentInviteLink')"
+                                        title="Copy">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="revokeInviteLink('{{ info.invite_link }}', this)"
+                                        title="Revoke">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div id="inviteActionsArea">
+                            <button class="btn btn-sm btn-telegram"
+                                    onclick="generateInviteLink(this)">
+                                <i class="fas fa-plus me-1"></i>Generate New Link
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
     </div>
 
-    {# Admins Tab #}
-    <div class="tab-pane fade" id="tab-admins">
+    {# ── Admins Tab ── #}
+    <div class="tab-pane fade" id="tab-admins" role="tabpanel">
         {% if admins %}
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light"><tr>
-                    <th>Admin</th><th>Username</th><th>Role</th><th>Title</th>
-                </tr></thead>
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Admin</th>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Title</th>
+                    </tr>
+                </thead>
                 <tbody>
                 {% for a in admins %}
                 <tr>
@@ -111,11 +195,25 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="member-avatar">{{ (a.name or "?")[0]|upper }}</div>
                             <span class="fw-semibold">{{ a.name }}</span>
-                            {% if a.is_bot %}<span class="badge bg-info admin-badge">Bot</span>{% endif %}
+                            {% if a.is_bot %}
+                            <span class="badge bg-info admin-badge">Bot</span>
+                            {% endif %}
                         </div>
                     </td>
-                    <td>{% if a.username %}<a href="https://t.me/{{ a.username }}" target="_blank">@{{ a.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                    <td><span class="badge bg-warning text-dark">{{ a.status }}</span></td>
+                    <td>
+                        {% if a.username %}
+                        <a href="https://t.me/{{ a.username }}" target="_blank">@{{ a.username }}</a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if "OWNER" in a.status|upper %}
+                        <span class="badge-owner">👑 Owner</span>
+                        {% else %}
+                        <span class="badge-admin">🛡 Admin</span>
+                        {% endif %}
+                    </td>
                     <td>{{ a.custom_title or "—" }}</td>
                 </tr>
                 {% endfor %}
@@ -123,92 +221,200 @@
             </table>
         </div>
         {% else %}
-        <div class="text-center text-muted py-4"><i class="fas fa-shield-alt fa-2x mb-2"></i><p>No admin data available.</p></div>
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-shield-alt fa-2x mb-2"></i>
+            <p>No admin data available.</p>
+        </div>
         {% endif %}
     </div>
 
-    {# Members Tab #}
-    <div class="tab-pane fade" id="tab-members">
-        {% if members %}
-        <div class="mb-3">
-            <input type="text" id="memberSearch" class="form-control" placeholder="Search members…"
-                   oninput="filterMembers(this.value)">
+    {# ── Members Tab ── #}
+    <div class="tab-pane fade" id="tab-members" role="tabpanel">
+        <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+            <input type="text" class="form-control form-control-sm" style="max-width:240px"
+                   placeholder="Search members…" oninput="filterMembers(this.value)">
+            <button class="btn btn-sm btn-outline-primary" onclick="loadMembers(1, this)">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover align-middle" id="membersTable">
-                <thead class="table-light"><tr>
-                    <th>Member</th><th>Username</th><th>Status</th>
-                </tr></thead>
-                <tbody>
+            <table class="table table-hover align-middle mb-2">
+                <thead class="table-light">
+                    <tr><th>Member</th><th>Username</th><th>Status</th></tr>
+                </thead>
+                <tbody id="membersTableBody">
                 {% for m in members %}
-                <tr class="member-row">
+                <tr>
                     <td>
                         <div class="d-flex align-items-center gap-2">
-                            <div class="member-avatar" style="background:#8e44ad;">{{ (m.name or "?")[0]|upper }}</div>
+                            <div class="member-avatar" style="background:{{ m.avatar_color }};">
+                                {{ m.avatar_letter }}
+                            </div>
                             <span>{{ m.name }}</span>
-                            {% if m.is_bot %}<span class="badge bg-info admin-badge">Bot</span>{% endif %}
+                            {% if m.is_bot %}
+                            <span class="badge bg-info admin-badge">Bot</span>
+                            {% endif %}
                         </div>
                     </td>
-                    <td>{% if m.username %}<a href="https://t.me/{{ m.username }}" target="_blank">@{{ m.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td>
+                        {% if m.username %}
+                        <a href="https://t.me/{{ m.username }}" target="_blank">@{{ m.username }}</a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
                     <td><span class="badge bg-light text-dark">{{ m.status }}</span></td>
                 </tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
-        <p class="text-muted small">Showing {{ members|length }} members (limited preview)</p>
-        {% else %}
-        <div class="text-center text-muted py-4"><i class="fas fa-users fa-2x mb-2"></i><p>No member data available.</p></div>
-        {% endif %}
+        <div class="pagination-bar mt-2">
+            <button id="membersPrevBtn" class="btn btn-sm btn-outline-secondary"
+                    onclick="membersPrev()" disabled>
+                <i class="fas fa-chevron-left"></i> Prev
+            </button>
+            <button id="membersNextBtn" class="btn btn-sm btn-outline-secondary"
+                    onclick="membersNext()">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>
+            <span id="membersStatus" class="status-text">
+                Showing {{ members|length }} members (initial load)
+            </span>
+        </div>
     </div>
 
-    {# Messages Tab #}
-    <div class="tab-pane fade" id="tab-messages">
-        {% if messages %}
-        <div class="d-flex flex-column gap-3">
+    {# ── Messages Tab ── #}
+    <div class="tab-pane fade" id="tab-messages" role="tabpanel">
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+            <button class="btn btn-sm btn-outline-primary" onclick="loadMessages(1, this)">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
+            <span class="text-muted small">Click the trash icon on any message to delete it.</span>
+        </div>
+        <div id="messagesContainer">
         {% for msg in messages %}
-        <div class="card msg-card">
+        <div class="msg-card card mb-2" id="msg-{{ msg.id }}">
             <div class="card-body py-2 px-3">
-                <div class="d-flex justify-content-between align-items-start mb-1">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
                     <small class="fw-semibold text-primary">{{ msg.sender or "Channel" }}</small>
-                    <div class="d-flex align-items-center gap-2">
-                        {% if msg.views %}<small class="text-muted"><i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}</small>{% endif %}
-                        {% if msg.is_pinned %}<span class="badge bg-warning text-dark">📌 Pinned</span>{% endif %}
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        {% if msg.views %}
+                        <small class="text-muted">
+                            <i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}
+                        </small>
+                        {% endif %}
+                        {% if msg.is_pinned %}
+                        <span class="badge bg-warning text-dark">📌 Pinned</span>
+                        {% endif %}
                         <small class="text-muted">{{ msg.date }}</small>
+                        <button class="btn btn-xs btn-outline-danger delete-msg-btn"
+                                onclick="deleteMessage({{ msg.id }}, document.getElementById('msg-{{ msg.id }}'))"
+                                title="Delete message">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
                     </div>
                 </div>
                 <p class="mb-0 small">
-                    {% if msg.text %}{{ msg.text[:300] }}{% if msg.text|length > 300 %}…{% endif %}
-                    {% elif msg.has_media %}<span class="text-muted"><i class="fas fa-image me-1"></i>Media</span>
-                    {% else %}<span class="text-muted">Empty message</span>{% endif %}
+                    {% if msg.short_text %}
+                        {{ msg.short_text }}
+                    {% elif msg.has_media %}
+                        <span class="text-muted">{{ msg.media_label or "📎 Media" }}</span>
+                    {% else %}
+                        <span class="text-muted">Empty message</span>
+                    {% endif %}
                 </p>
             </div>
         </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-comment fa-2x mb-2"></i><p>No messages available.</p>
+        </div>
         {% endfor %}
         </div>
-        <p class="text-muted small mt-3">Showing last {{ messages|length }} messages</p>
-        {% else %}
-        <div class="text-center text-muted py-4"><i class="fas fa-comment fa-2x mb-2"></i><p>No messages available.</p></div>
-        {% endif %}
+        <div class="pagination-bar mt-3">
+            <button id="messagesPrevBtn" class="btn btn-sm btn-outline-secondary"
+                    onclick="messagesPrev()" disabled>
+                <i class="fas fa-chevron-left"></i> Prev
+            </button>
+            <button id="messagesNextBtn" class="btn btn-sm btn-outline-secondary"
+                    onclick="messagesNext()">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>
+            <span id="messagesStatus" class="status-text">
+                Showing {{ messages|length }} messages (initial load)
+            </span>
+        </div>
+    </div>
+
+    {# ── Actions Tab ── #}
+    <div class="tab-pane fade" id="tab-actions" role="tabpanel">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-1">
+                            <i class="fas fa-link me-2 text-success"></i>Invite Link
+                        </h6>
+                        <p class="text-muted small mb-3">Generate a new one-time or permanent invite link.</p>
+                        <button class="btn btn-sm btn-success" onclick="generateInviteLink(this)">
+                            <i class="fas fa-plus me-1"></i>Generate Invite Link
+                        </button>
+                        <div id="inviteActionsArea" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-1">
+                            <i class="fas fa-crown me-2 text-warning"></i>Transfer Ownership
+                        </h6>
+                        <p class="text-muted small mb-3">
+                            Transfer ownership to another user. Only the channel owner can do this.
+                        </p>
+                        <button class="btn btn-sm btn-warning" onclick="openTransferModal()">
+                            <i class="fas fa-exchange-alt me-1"></i>Transfer Ownership
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
 </div>
 
-{% endblock %}
+{# ── Transfer Ownership Modal ── #}
+<div class="modal fade" id="transferModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-crown me-2 text-warning"></i>Transfer Ownership
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This action transfers permanent ownership of the channel.
+                    You will lose your owner privileges. This requires Telegram 2FA and may fail here —
+                    use the official Telegram app for ownership transfers.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Target User ID</label>
+                    <input type="number" id="transferUserId" class="form-control"
+                           placeholder="e.g. 123456789">
+                    <div class="form-text">The numeric Telegram user ID of the new owner.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="submitTransfer(this)">
+                    <i class="fas fa-exchange-alt me-1"></i>Transfer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
-{% block extra_scripts %}
-<script>
-function copyInvite() {
-    const el = document.getElementById('inviteLink');
-    el.select();
-    document.execCommand('copy');
-    alert('Invite link copied!');
-}
-function filterMembers(q) {
-    q = q.toLowerCase();
-    document.querySelectorAll('#membersTable .member-row').forEach(function(row) {
-        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-}
-</script>
 {% endblock %}

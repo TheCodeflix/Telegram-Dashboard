@@ -5,6 +5,8 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* ─── Navbar ──────────────────────────────────────────────────────────────── */
+
 .navbar {
     background: linear-gradient(135deg, #0088cc, #005f99);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -15,17 +17,21 @@ body {
     letter-spacing: 0.5px;
 }
 
+/* ─── Cards ───────────────────────────────────────────────────────────────── */
+
 .card {
     border: none;
     border-radius: 12px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────── */
 
 .btn-telegram {
     background-color: #0088cc;
@@ -41,6 +47,15 @@ body {
     background-color: #006fa8;
     color: #fff;
 }
+
+.btn-xs {
+    padding: 2px 7px;
+    font-size: .75rem;
+    line-height: 1.4;
+    border-radius: 4px;
+}
+
+/* ─── Status badges ───────────────────────────────────────────────────────── */
 
 .status-badge {
     display: inline-block;
@@ -60,10 +75,159 @@ body {
     color: #721c24;
 }
 
+/* ─── Footer ──────────────────────────────────────────────────────────────── */
+
 footer {
     background-color: #fff;
     border-top: 1px solid #e9ecef;
     padding: 20px 0;
     color: #6c757d;
     font-size: 0.9rem;
+}
+
+/* ─── Member / admin avatars ──────────────────────────────────────────────── */
+
+.member-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #0088cc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: .9rem;
+    flex-shrink: 0;
+}
+
+.avatar-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+/* ─── Members table ───────────────────────────────────────────────────────── */
+
+#membersTableBody tr {
+    transition: background .1s;
+}
+
+#membersTableBody tr:hover {
+    background: #f8f9fa;
+}
+
+/* ─── Message cards ───────────────────────────────────────────────────────── */
+
+.msg-card {
+    border-left: 3px solid #0088cc !important;
+    border-radius: 8px;
+    transition: opacity .3s;
+}
+
+.msg-card:hover .delete-msg-btn {
+    opacity: 1;
+}
+
+.delete-msg-btn {
+    opacity: 0;
+    transition: opacity .2s;
+}
+
+/* ─── Invite link box ─────────────────────────────────────────────────────── */
+
+.invite-link-box {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+.invite-link-box input {
+    font-family: monospace;
+    font-size: .85rem;
+}
+
+/* ─── Loading spinner ─────────────────────────────────────────────────────── */
+
+.spinner-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    color: #6c757d;
+}
+
+/* ─── Admin badges ────────────────────────────────────────────────────────── */
+
+.admin-badge {
+    font-size: .7rem;
+}
+
+.badge-owner {
+    background: linear-gradient(135deg, #f4a006, #e67e22);
+    color: #fff;
+    font-size: .7rem;
+    border-radius: 6px;
+    padding: 2px 8px;
+}
+
+.badge-admin {
+    background: #2980b9;
+    color: #fff;
+    font-size: .7rem;
+    border-radius: 6px;
+    padding: 2px 8px;
+}
+
+/* ─── Pagination controls ─────────────────────────────────────────────────── */
+
+.pagination-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.pagination-bar .status-text {
+    font-size: .8rem;
+    color: #6c757d;
+    flex: 1;
+}
+
+/* ─── Tab content card ────────────────────────────────────────────────────── */
+
+.tab-content.card {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: none;
+}
+
+/* ─── Channel header ──────────────────────────────────────────────────────── */
+
+.channel-header {
+    background: linear-gradient(135deg, #0088cc, #005f99);
+    color: #fff;
+    border-radius: 12px;
+}
+
+/* ─── Modals ──────────────────────────────────────────────────────────────── */
+
+.modal-content {
+    border: none;
+    border-radius: 12px;
+}
+
+.modal-header {
+    border-bottom: 1px solid #f0f2f5;
+}
+
+.modal-footer {
+    border-top: 1px solid #f0f2f5;
 }
