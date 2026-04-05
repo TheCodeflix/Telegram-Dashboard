@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 from dotenv import load_dotenv
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import Message
 from pyrogram.errors import (
     SessionPasswordNeeded,
@@ -37,6 +37,7 @@ API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DOMAIN = os.environ.get("DOMAIN", "https://your-app.koyeb.app")
+BOT_OWNER = int(os.environ.get("BOT_OWNER", 0))
 
 # ─── Conversation States ─────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ async def safe_disconnect(client: Client) -> None:
 async def _send_safe(message: Message, text: str, **kwargs) -> None:
     """Send a message, silently dropping errors (e.g. if chat was deleted)."""
     try:
-        await message.reply_text(text, parse_mode="html", **kwargs)
+        await message.reply_text(text, parse_mode=enums.ParseMode.HTML, **kwargs)
     except Exception as e:
         logger.warning("Failed to send message to user: %s", e)
 
@@ -586,6 +587,19 @@ async def main():
         await bot.start()
         me = await bot.get_me()
         logger.info("Bot running as @%s (id=%s)", me.username, me.id)
+        if BOT_OWNER:
+            try:
+                await bot.send_message(
+                    BOT_OWNER,
+                    f"✅ <b>Bot Started!</b>\n\n"
+                    f"🤖 <b>Bot:</b> @{me.username}\n"
+                    f"🆔 <b>ID:</b> <code>{me.id}</code>\n"
+                    f"🕐 Bot is online and ready.",
+                    parse_mode=enums.ParseMode.HTML,
+                )
+                logger.info("Startup message sent to BOT_OWNER=%s", BOT_OWNER)
+            except Exception as e:
+                logger.warning("Could not send startup message to BOT_OWNER: %s", e)
         await asyncio.Event().wait()
     except Exception as e:
         logger.critical("Bot crashed: %s", e, exc_info=True)
