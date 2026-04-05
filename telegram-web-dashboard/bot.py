@@ -1,9 +1,12 @@
 import os
 import asyncio
 import logging
+import urllib.request
+import urllib.parse
+import json
+from types import SimpleNamespace
 from dotenv import load_dotenv
-from pyrogram import Client, filters, enums
-from pyrogram.types import Message
+from pyrogram import Client
 from pyrogram.errors import (
     SessionPasswordNeeded,
     AuthKeyUnregistered,
@@ -39,6 +42,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DOMAIN = os.environ.get("DOMAIN", "https://your-app.koyeb.app")
 BOT_OWNER = int(os.environ.get("BOT_OWNER", 0))
 
+TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
 # ─── Conversation States ─────────────────────────────────────────────────────
 
 IDLE = 0
@@ -51,15 +56,74 @@ WAITING_FOR_REPLACE_CONFIRM = 3
 user_states: dict[int, int] = {}
 user_temp_data: dict[int, dict] = {}
 
-# ─── Bot Client ──────────────────────────────────────────────────────────────
+# ─── HTTP API Helpers ─────────────────────────────────────────────────────────
 
-bot = Client(
-    name="telegram_dashboard_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    in_memory=True,
-)
+async def _http_post(endpoint: str, payload: dict) -> dict:
+    loop = asyncio.get_event_loop()
+    def _do():
+        body = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{TG_API}/{endpoint}",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        return json.loads(resp.read())
+    try:
+        return await loop.run_in_executor(None, _do)
+    except Exception as e:
+        logger.warning("HTTP API %s failed: %s", endpoint, e)
+        return {}
+
+
+async def http_send(chat_id: int, text: str) -> dict:
+    result = await _http_post("sendMessage", {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+    })
+    return result.get("result", {})
+
+
+async def http_delete(chat_id: int, message_id: int) -> None:
+    await _http_post("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+
+
+# ─── BotMessage: compatibility wrapper ───────────────────────────────────────
+
+class _User:
+    def __init__(self, data: dict):
+        self.id = data.get("id", 0)
+        self.first_name = data.get("first_name", "")
+        self.last_name = data.get("last_name", "")
+        self.username = data.get("username", "")
+
+
+class BotMessage:
+    def __init__(self, data: dict):
+        self._chat_id = data["chat"]["id"]
+        self._message_id = data.get("message_id", 0)
+        self.chat = SimpleNamespace(
+            id=data["chat"]["id"],
+            type=data["chat"].get("type", "private"),
+        )
+        self.from_user = _User(data["from"]) if "from" in data else None
+        self.text = data.get("text", "")
+
+    async def reply_text(self, text: str, parse_mode=None, **kwargs) -> "BotMessage":
+        result = await http_send(self._chat_id, text)
+        fake = BotMessage.__new__(BotMessage)
+        fake._chat_id = self._chat_id
+        fake._message_id = result.get("message_id", 0)
+        fake.chat = self.chat
+        fake.from_user = self.from_user
+        fake.text = text
+        return fake
+
+    async def delete(self) -> None:
+        if self._message_id:
+            await http_delete(self._chat_id, self._message_id)
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -87,18 +151,16 @@ async def safe_disconnect(client: Client) -> None:
         pass
 
 
-async def _send_safe(message: Message, text: str, **kwargs) -> None:
-    """Send a message, silently dropping errors (e.g. if chat was deleted)."""
+async def _send_safe(message: BotMessage, text: str, **kwargs) -> None:
     try:
-        await message.reply_text(text, parse_mode=enums.ParseMode.HTML, **kwargs)
+        await message.reply_text(text)
     except Exception as e:
-        logger.warning("Failed to send message to user: %s", e)
+        logger.warning("Failed to send message: %s", e)
 
 
 # ─── /start ──────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("start") & filters.private)
-async def start_handler(client: Client, message: Message):
+async def start_handler(message: BotMessage):
     user = message.from_user
     logger.info("/start from user_id=%s username=%s", user.id, user.username)
     try:
@@ -121,8 +183,7 @@ async def start_handler(client: Client, message: Message):
 
 # ─── /cancel ─────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("cancel") & filters.private)
-async def cancel_handler(client: Client, message: Message):
+async def cancel_handler(message: BotMessage):
     user = message.from_user
     logger.info("/cancel from user_id=%s", user.id)
     try:
@@ -137,8 +198,7 @@ async def cancel_handler(client: Client, message: Message):
 
 # ─── /logout ─────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("logout") & filters.private)
-async def logout_handler(client: Client, message: Message):
+async def logout_handler(message: BotMessage):
     from database import models
     user_id = message.from_user.id
     logger.info("/logout from user_id=%s", user_id)
@@ -146,10 +206,7 @@ async def logout_handler(client: Client, message: Message):
         if models.user_has_active_session(user_id):
             models.delete_session_by_user_id(user_id)
             models.delete_user_session(user_id)
-            await _send_safe(
-                message,
-                "✅ Logged out successfully. Your dashboard link has been invalidated.",
-            )
+            await _send_safe(message, "✅ Logged out successfully. Your dashboard link has been invalidated.")
         else:
             await _send_safe(message, "❌ You don't have any active session.")
     except Exception as e:
@@ -159,18 +216,14 @@ async def logout_handler(client: Client, message: Message):
 
 # ─── /regen ──────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("regen") & filters.private)
-async def regen_handler(client: Client, message: Message):
+async def regen_handler(message: BotMessage):
     from database import models
     from plugins.session_manager import generate_unique_link
     user_id = message.from_user.id
     logger.info("/regen from user_id=%s", user_id)
     try:
         if not models.user_has_active_session(user_id):
-            await _send_safe(
-                message,
-                "❌ You don't have an active session. Use /start to create one.",
-            )
+            await _send_safe(message, "❌ You don't have an active session. Use /start to create one.")
             return
 
         existing = models.get_session_by_user_id(user_id)
@@ -191,7 +244,6 @@ async def regen_handler(client: Client, message: Message):
 
         dashboard_url = f"{DOMAIN}/dashboard/{new_link}"
         logger.info("Regenerated link for user_id=%s new_link=%s", user_id, new_link)
-
         await _send_safe(
             message,
             "🔄 <b>New dashboard link generated!</b>\n\n"
@@ -205,18 +257,14 @@ async def regen_handler(client: Client, message: Message):
 
 # ─── /status ─────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("status") & filters.private)
-async def status_handler(client: Client, message: Message):
+async def status_handler(message: BotMessage):
     from database import models
     user_id = message.from_user.id
     logger.info("/status from user_id=%s", user_id)
     try:
         session = models.get_session_by_user_id(user_id)
         if not session:
-            await _send_safe(
-                message,
-                "❌ No active session found.\n\nUse /start to create one.",
-            )
+            await _send_safe(message, "❌ No active session found.\n\nUse /start to create one.")
             return
 
         created = session.get("created_at")
@@ -242,8 +290,7 @@ async def status_handler(client: Client, message: Message):
 
 # ─── /help ───────────────────────────────────────────────────────────────────
 
-@bot.on_message(filters.command("help") & filters.private)
-async def help_handler(client: Client, message: Message):
+async def help_handler(message: BotMessage):
     await _send_safe(
         message,
         "<b>Available Commands</b>\n\n"
@@ -258,24 +305,18 @@ async def help_handler(client: Client, message: Message):
 
 # ─── Central Text Handler ────────────────────────────────────────────────────
 
-@bot.on_message(filters.text & filters.private & ~filters.command(
-    ["start", "cancel", "logout", "regen", "status", "help"]
-))
-async def text_handler(client: Client, message: Message):
+async def text_handler(message: BotMessage):
     user_id = message.from_user.id
     state = get_state(user_id)
     try:
         if state == WAITING_FOR_SESSION:
-            await handle_session_input(client, message)
+            await handle_session_input(message)
         elif state == WAITING_FOR_2FA:
-            await handle_2fa_input(client, message)
+            await handle_2fa_input(message)
         elif state == WAITING_FOR_REPLACE_CONFIRM:
-            await handle_replace_confirm(client, message)
+            await handle_replace_confirm(message)
         else:
-            await _send_safe(
-                message,
-                "Send /start to add your session, or /help for all commands.",
-            )
+            await _send_safe(message, "Send /start to add your session, or /help for all commands.")
     except Exception as e:
         logger.error("Unhandled error in text_handler for user_id=%s state=%s: %s", user_id, state, e)
         await _send_safe(message, "❌ An unexpected error occurred. Please try again or use /cancel.")
@@ -283,7 +324,7 @@ async def text_handler(client: Client, message: Message):
 
 # ─── Session String Handler ───────────────────────────────────────────────────
 
-async def handle_session_input(client: Client, message: Message):
+async def handle_session_input(message: BotMessage):
     from plugins.session_manager import validate_session_string
     user_id = message.from_user.id
     session_string = message.text.strip()
@@ -325,13 +366,10 @@ async def handle_session_input(client: Client, message: Message):
 
         await safe_disconnect(temp_client)
         await wait_msg.delete()
-        await handle_successful_connection(client, message, user_id)
+        await handle_successful_connection(message, user_id)
 
     except SessionPasswordNeeded:
-        user_temp_data[user_id] = {
-            "session_string": session_string,
-            "temp_client": temp_client,
-        }
+        user_temp_data[user_id] = {"session_string": session_string, "temp_client": temp_client}
         set_state(user_id, WAITING_FOR_2FA)
         await wait_msg.delete()
         await _send_safe(
@@ -346,8 +384,7 @@ async def handle_session_input(client: Client, message: Message):
         await _send_safe(
             message,
             "❌ <b>Session string is invalid or has been revoked.</b>\n\n"
-            "Please generate a new Pyrogram session string and try again, "
-            "or use /cancel to stop.",
+            "Please generate a new Pyrogram session string and try again, or use /cancel to stop.",
         )
 
     except UserDeactivated:
@@ -391,7 +428,7 @@ async def handle_session_input(client: Client, message: Message):
 
 # ─── 2FA Handler ─────────────────────────────────────────────────────────────
 
-async def handle_2fa_input(client: Client, message: Message):
+async def handle_2fa_input(message: BotMessage):
     user_id = message.from_user.id
     password = message.text.strip()
     data = user_temp_data.get(user_id, {})
@@ -400,10 +437,7 @@ async def handle_2fa_input(client: Client, message: Message):
 
     if not session_string:
         clear_user(user_id)
-        await _send_safe(
-            message,
-            "❌ Session data lost. Please use /start to begin again.",
-        )
+        await _send_safe(message, "❌ Session data lost. Please use /start to begin again.")
         return
 
     wait_msg = await message.reply_text("⏳ Verifying 2FA password, please wait...")
@@ -433,31 +467,22 @@ async def handle_2fa_input(client: Client, message: Message):
 
         await safe_disconnect(temp_client)
         await wait_msg.delete()
-        await handle_successful_connection(client, message, user_id)
+        await handle_successful_connection(message, user_id)
 
     except BadRequest:
         await wait_msg.delete()
-        await _send_safe(
-            message,
-            "❌ <b>Incorrect 2FA password.</b>\n\nPlease try again, or use /cancel to stop.",
-        )
+        await _send_safe(message, "❌ <b>Incorrect 2FA password.</b>\n\nPlease try again, or use /cancel to stop.")
 
     except FloodWait as e:
         await wait_msg.delete()
-        await _send_safe(
-            message,
-            f"⏳ <b>Too many attempts.</b> Please wait {e.value} seconds before trying again.",
-        )
+        await _send_safe(message, f"⏳ <b>Too many attempts.</b> Please wait {e.value} seconds before trying again.")
 
     except (PyroConnectionError, ConnectionError, TimeoutError) as e:
         logger.error("Connection error during 2FA for user_id=%s: %s", user_id, e)
         if temp_client:
             await safe_disconnect(temp_client)
         await wait_msg.delete()
-        await _send_safe(
-            message,
-            "❌ <b>Connection error.</b> Could not reach Telegram servers. Please try again.",
-        )
+        await _send_safe(message, "❌ <b>Connection error.</b> Could not reach Telegram servers. Please try again.")
 
     except Exception as e:
         logger.error("2FA error for user_id=%s: %s", user_id, str(e))
@@ -474,7 +499,7 @@ async def handle_2fa_input(client: Client, message: Message):
 
 # ─── Replace Confirm Handler ─────────────────────────────────────────────────
 
-async def handle_replace_confirm(client: Client, message: Message):
+async def handle_replace_confirm(message: BotMessage):
     from database import models
     user_id = message.from_user.id
     response = message.text.strip().lower()
@@ -484,7 +509,7 @@ async def handle_replace_confirm(client: Client, message: Message):
             models.delete_session_by_user_id(user_id)
             models.delete_user_session(user_id)
             logger.info("User %s confirmed session replacement", user_id)
-            await _finalize_session(client, message, user_id)
+            await _finalize_session(message, user_id)
         elif response in ("no", "n"):
             clear_user(user_id)
             await _send_safe(
@@ -501,7 +526,7 @@ async def handle_replace_confirm(client: Client, message: Message):
 
 # ─── Successful Connection Handler ────────────────────────────────────────────
 
-async def handle_successful_connection(client: Client, message: Message, user_id: int):
+async def handle_successful_connection(message: BotMessage, user_id: int):
     from database import models
     try:
         if models.user_has_active_session(user_id):
@@ -516,13 +541,13 @@ async def handle_successful_connection(client: Client, message: Message, user_id
                 "Reply with <b>yes</b> to replace or <b>no</b> to keep the existing one.",
             )
         else:
-            await _finalize_session(client, message, user_id)
+            await _finalize_session(message, user_id)
     except Exception as e:
         logger.error("Error in handle_successful_connection for user_id=%s: %s", user_id, e)
         await _send_safe(message, "❌ An error occurred. Please try again or use /cancel.")
 
 
-async def _finalize_session(client: Client, message: Message, user_id: int):
+async def _finalize_session(message: BotMessage, user_id: int):
     from database import models
     from plugins.session_manager import generate_unique_link
     data = user_temp_data.get(user_id, {})
@@ -542,7 +567,6 @@ async def _finalize_session(client: Client, message: Message, user_id: int):
 
         dashboard_url = f"{DOMAIN}/dashboard/{unique_link}"
         logger.info("Session saved for user_id=%s unique_link=%s", user_id, unique_link)
-
         clear_user(user_id)
 
         await _send_safe(
@@ -553,8 +577,7 @@ async def _finalize_session(client: Client, message: Message, user_id: int):
             "🔗 <b>Your Dashboard Link:</b>\n"
             f"<code>{dashboard_url}</code>\n\n"
             "Keep this link private — it provides access to your Telegram account data.\n\n"
-            "Use /status to view session info, /regen to refresh the link, "
-            "or /logout to remove it.",
+            "Use /status to view session info, /regen to refresh the link, or /logout to remove it.",
         )
     except Exception as e:
         logger.error("Error in _finalize_session for user_id=%s: %s", user_id, e)
@@ -566,17 +589,63 @@ async def _finalize_session(client: Client, message: Message, user_id: int):
         )
 
 
-# ─── Debug: Catch-All Handler ─────────────────────────────────────────────────
+# ─── Update Dispatcher ────────────────────────────────────────────────────────
 
-@bot.on_message(group=99)
-async def debug_all_messages(client: Client, message: Message):
-    logger.info(
-        "DEBUG incoming message: chat_type=%s chat_id=%s user_id=%s text=%r",
-        message.chat.type if message.chat else None,
-        message.chat.id if message.chat else None,
-        message.from_user.id if message.from_user else None,
-        (message.text or "")[:100],
-    )
+async def dispatch_update(update: dict):
+    msg_data = update.get("message") or update.get("edited_message")
+    if not msg_data:
+        return
+    if msg_data.get("chat", {}).get("type") != "private":
+        return
+    if "from" not in msg_data:
+        return
+
+    message = BotMessage(msg_data)
+    text = (message.text or "").strip()
+
+    logger.info("Received: user_id=%s text=%r", message.from_user.id, text[:80])
+
+    cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else None
+
+    if cmd == "/start":
+        await start_handler(message)
+    elif cmd == "/cancel":
+        await cancel_handler(message)
+    elif cmd == "/logout":
+        await logout_handler(message)
+    elif cmd == "/regen":
+        await regen_handler(message)
+    elif cmd == "/status":
+        await status_handler(message)
+    elif cmd == "/help":
+        await help_handler(message)
+    elif not cmd:
+        await text_handler(message)
+
+
+# ─── HTTP Polling Loop ────────────────────────────────────────────────────────
+
+async def polling_loop():
+    offset = 0
+    logger.info("HTTP polling started")
+    while True:
+        try:
+            loop = asyncio.get_event_loop()
+            url = f"{TG_API}/getUpdates?offset={offset}&timeout=30&limit=50&allowed_updates=[\"message\"]"
+            def _fetch():
+                req = urllib.request.Request(url)
+                resp = urllib.request.urlopen(req, timeout=35)
+                return json.loads(resp.read())
+
+            data = await loop.run_in_executor(None, _fetch)
+            for update in data.get("result", []):
+                offset = update["update_id"] + 1
+                asyncio.create_task(dispatch_update(update))
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Polling error: %s", e)
+            await asyncio.sleep(5)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -584,31 +653,33 @@ async def debug_all_messages(client: Client, message: Message):
 async def main():
     logger.info("Starting Telegram Dashboard Bot...")
     try:
-        await bot.start()
-        me = await bot.get_me()
-        logger.info("Bot running as @%s (id=%s)", me.username, me.id)
+        loop = asyncio.get_event_loop()
+        def _get_me():
+            req = urllib.request.Request(f"{TG_API}/getMe")
+            resp = urllib.request.urlopen(req, timeout=10)
+            return json.loads(resp.read()).get("result", {})
+
+        me = await loop.run_in_executor(None, _get_me)
+        logger.info("Bot running as @%s (id=%s)", me.get("username"), me.get("id"))
+
         if BOT_OWNER:
-            try:
-                await bot.send_message(
-                    BOT_OWNER,
-                    f"✅ <b>Bot Started!</b>\n\n"
-                    f"🤖 <b>Bot:</b> @{me.username}\n"
-                    f"🆔 <b>ID:</b> <code>{me.id}</code>\n"
-                    f"🕐 Bot is online and ready.",
-                    parse_mode=enums.ParseMode.HTML,
-                )
+            result = await http_send(
+                BOT_OWNER,
+                f"✅ <b>Bot Started!</b>\n\n"
+                f"🤖 <b>Bot:</b> @{me.get('username')}\n"
+                f"🆔 <b>ID:</b> <code>{me.get('id')}</code>\n"
+                f"🕐 Bot is online and ready.",
+            )
+            if result:
                 logger.info("Startup message sent to BOT_OWNER=%s", BOT_OWNER)
-            except Exception as e:
-                logger.warning("Could not send startup message to BOT_OWNER: %s", e)
-        await asyncio.Event().wait()
+            else:
+                logger.warning("Could not send startup message to BOT_OWNER")
+
+        await polling_loop()
+
     except Exception as e:
         logger.critical("Bot crashed: %s", e, exc_info=True)
         raise
-    finally:
-        try:
-            await bot.stop()
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":
