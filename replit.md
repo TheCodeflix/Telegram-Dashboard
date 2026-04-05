@@ -25,3 +25,45 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Telegram Web Dashboard (Python)
+
+A standalone Python project at `telegram-web-dashboard/`.
+
+### Stack
+- **Framework**: Flask 2.3.0
+- **Telegram**: Pyrogram 2.0.106 + TgCrypto
+- **Database**: MongoDB via pymongo 4.5.0
+- **Templates**: Jinja2 with Bootstrap 5 + Font Awesome
+
+### Project Structure
+```
+telegram-web-dashboard/
+├── app.py                    # Flask app (routes: /, /health)
+├── bot.py                    # Telegram bot (/start, /help handlers)
+├── requirements.txt
+├── Dockerfile
+├── .env                      # Placeholder values (real values in Replit Secrets)
+├── database/
+│   ├── mongodb.py            # connect_to_mongodb, get_collection, close_connection
+│   └── models.py             # Session and UserSession CRUD functions
+├── plugins/
+│   └── session_manager.py    # generate_unique_link, validate_session_string, format_session_for_db
+├── templates/
+│   ├── base.html             # Bootstrap 5 + Font Awesome layout
+│   └── index.html
+└── static/
+    ├── style.css
+    └── script.js
+```
+
+### Required Secrets
+- `MONGODB_URI` — MongoDB Atlas connection string
+- `BOT_TOKEN` — Telegram bot token
+- `API_ID` — Telegram API ID
+- `API_HASH` — Telegram API Hash
+
+### Running
+- Flask: `cd telegram-web-dashboard && python app.py` (port 8000)
+- Bot: `cd telegram-web-dashboard && python bot.py`
+- Workflow: "Telegram Dashboard - Flask" (configured in Replit)
