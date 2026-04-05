@@ -408,17 +408,41 @@ def channel_transfer(unique_link, channel_id):
         return err
 
     data = request.get_json(silent=True) or {}
-    if not data.get("target_user_id"):
-        return jsonify({"success": False, "error": "target_user_id is required"}), 400
+    target_user_id = data.get("target_user_id", "").strip()
+    password       = data.get("password", "").strip()
 
-    return jsonify({
-        "success": False,
-        "error": (
-            "Ownership transfer requires your Telegram 2FA password and cannot be "
-            "performed safely via the web dashboard. Please use the official Telegram "
-            "app or Telegram Desktop to transfer ownership."
+    if not target_user_id:
+        return jsonify({"success": False, "error": "target_user_id is required"}), 400
+    if not password:
+        return jsonify({"success": False, "error": "2FA password is required"}), 400
+
+    try:
+        target_user_id = int(target_user_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "target_user_id must be a number"}), 400
+
+    try:
+        telegram_client.transfer_ownership(
+            session["session_string"], channel_id, target_user_id, password
         )
-    }), 400
+        logger.info(
+            "Ownership transferred: channel=%s -> user=%s by unique_link=%s",
+            channel_id, target_user_id, unique_link,
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        err_msg = str(e)
+        logger.error("Ownership transfer failed: %s", err_msg)
+        if "PASSWORD_HASH_INVALID" in err_msg:
+            return jsonify({"success": False, "error": "Wrong 2FA password. Please try again."}), 400
+        if "CHAT_ADMIN_REQUIRED" in err_msg:
+            return jsonify({"success": False, "error": "You are not the owner of this chat."}), 403
+        if "USER_NOT_MUTUAL_CONTACT" in err_msg:
+            return jsonify({"success": False,
+                            "error": "Target user must be in your contacts and have you as a contact."}), 400
+        if "CHANNELS_TOO_MUCH" in err_msg:
+            return jsonify({"success": False, "error": "Target user has too many channels/groups."}), 400
+        return jsonify({"success": False, "error": f"Transfer failed: {err_msg}"}), 400
 
 
 # ─── AJAX: Delete message ─────────────────────────────────────────────────────

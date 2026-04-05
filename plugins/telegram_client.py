@@ -3,9 +3,10 @@ import logging
 import asyncio
 import base64
 import functools
-from pyrogram import Client
+from pyrogram import Client, raw
 from pyrogram.enums import ChatType
 from pyrogram.errors import FloodWait
+from pyrogram.utils import compute_password_check
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,33 @@ async def _delete_message(client: Client, channel_id: int, message_id: int) -> b
     return True
 
 
+async def _transfer_ownership(client: Client, channel_id: int,
+                               target_user_id: int, password: str) -> bool:
+    """
+    Transfer ownership of a channel/supergroup to another user.
+    Requires the current account's 2FA password.
+    """
+    # Step 1: Get 2FA password SRP parameters
+    pwd_info = await client.invoke(raw.functions.account.GetPassword())
+
+    # Step 2: Compute the SRP check using the provided password
+    pwd_check = compute_password_check(pwd_info, password)
+
+    # Step 3: Resolve peers
+    channel_peer = await client.resolve_peer(channel_id)
+    user_peer    = await client.resolve_peer(target_user_id)
+
+    # Step 4: Call EditCreator to transfer ownership
+    await client.invoke(
+        raw.functions.channels.EditCreator(
+            channel=channel_peer,
+            user_id=user_peer,
+            password=pwd_check,
+        )
+    )
+    return True
+
+
 async def _get_chat_photo(client: Client, chat_id: int):
     """Download chat photo and return base64 data URI, or None."""
     try:
@@ -332,6 +360,14 @@ def delete_message(session_string: str, channel_id: int, message_id: int) -> boo
     return run_in_session(
         session_string,
         lambda c: _delete_message(c, channel_id, message_id),
+    )
+
+
+def transfer_ownership(session_string: str, channel_id: int,
+                        target_user_id: int, password: str) -> bool:
+    return run_in_session(
+        session_string,
+        lambda c: _transfer_ownership(c, channel_id, target_user_id, password),
     )
 
 
