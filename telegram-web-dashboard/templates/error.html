@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ title or "Error" }} — Telegram Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center py-5">
+        <i class="fas fa-exclamation-circle fa-4x mb-4" style="color: #dc3545;"></i>
+        <h3 class="fw-bold mb-3">{{ title or "Something went wrong" }}</h3>
+        <p class="text-muted lead">{{ message }}</p>
+        <a href="/" class="btn btn-telegram mt-3">
+            <i class="fas fa-home me-2"></i>Go Home
+        </a>
+    </div>
+</div>
+{% endblock %}

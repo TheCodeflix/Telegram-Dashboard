@@ -1,0 +1,102 @@
+IMPLEMENT TELEGRAM WEB DASHBOARD - PART 3 (FLASK DASHBOARD & TELEGRAM CLIENT):
+
+1. CREATE plugins/telegram_client.py:
+   - Function: create_client(session_string)
+     * Initialize Pyrogram client with in-memory storage
+     * Return client object
+   - Function: test_connection(client, session_string, password=None)
+     * Try to connect and get user info
+     * Return success status and user_info dict
+   - Function: get_all_dialogs(client)
+     * Get all chats, channels, groups, users
+     * Return formatted list with type, id, title, username
+   - Function: get_user_info(client)
+     * Get current user info (name, username, id, photo)
+     * Return dict
+
+2. CREATE plugins/channel_utils.py:
+   - Function: format_dialog(dialog)
+     * Extract: id, title, username, type, photo_url, member_count
+     * Return dict
+   - Function: get_dialog_type(dialog)
+     * Return 'channel', 'group', 'supergroup', 'bot', 'user'
+   - Function: sort_dialogs_by_type(dialogs)
+     * Group dialogs by type
+     * Return dict with keys: channels, groups, contacts, bots
+
+3. UPDATE app.py WITH DASHBOARD ROUTE:
+   - Route: /dashboard/<unique_link> (GET)
+   - Steps:
+     * Query MongoDB for session using models.get_session_by_unique_id(unique_link)
+     * If not found: Show "Invalid or expired link" template
+     * If found but inactive: Show "Session expired" message
+     * Update last_accessed using models.update_last_accessed(unique_link)
+     * Get session_string from database
+     * Create client using telegram_client.create_client(session_string)
+     * Connect to Telegram
+     * Get user_info using telegram_client.get_user_info()
+     * Get all dialogs using telegram_client.get_all_dialogs()
+     * Sort dialogs using channel_utils.sort_dialogs_by_type()
+     * Render dashboard.html with user_info and sorted dialogs
+
+4. UPDATE app.py WITH CHANNEL VIEW ROUTE:
+   - Route: /channel/<unique_link>/<channel_id> (GET)
+   - Steps:
+     * Validate unique_link from database
+     * Get session_string
+     * Create client and connect
+     * Fetch channel info using channel_utils.get_channel_info()
+     * Fetch admins, members, messages
+     * Render channel_view.html
+
+5. UPDATE app.py WITH PROFILE ROUTE:
+   - Route: /profile/<unique_link> (GET)
+   - Steps:
+     * Validate unique_link
+     * Get session from database
+     * Get user_info from Telegram client
+     * Render profile.html with session info and user_info
+
+6. UPDATE app.py WITH LOGOUT ROUTE:
+   - Route: /logout/<unique_link> (GET)
+   - Steps:
+     * Delete session using models.delete_session_by_unique_id(unique_link)
+     * Show "Logged out successfully" message
+
+7. CREATE templates/dashboard.html:
+   - Extends base.html
+   - Display user info (name, username)
+   - Show stats cards (Total Channels, Groups, Contacts, Bots)
+   - Display sections:
+     * Channels (cards with name, member count, view button)
+     * Groups (cards with name, member count, view button)
+     * Contacts (cards with name, username)
+     * Bots (cards with name, username)
+   - Search bar for filtering
+   - Refresh button
+   - Profile link and Logout button
+
+8. CREATE templates/channel_view.html:
+   - Extends base.html
+   - Channel header with photo, name, username
+   - Member count and online count
+   - Tabs: Info, Admins, Members, Messages, Pinned, Invite Links
+   - Action buttons: Generate Invite, Transfer Ownership (if owner)
+   - Members table with pagination
+   - Messages list with delete buttons (for admins)
+
+9. CREATE templates/profile.html:
+   - Extends base.html
+   - Session info card (created_at, last_accessed)
+   - User info card (name, username, user_id)
+   - Actions: Regenerate Link button, Logout button
+   - Danger zone: Delete session data
+
+10. TESTING FOR PART 3:
+    - Test /dashboard/<unique_link> with valid and invalid links
+    - Verify dashboard shows all channels, groups, contacts, bots
+    - Test /channel/<unique_link>/<channel_id> for valid channel
+    - Test /profile/<unique_link>
+    - Test /logout/<unique_link>
+    - Verify all templates render correctly
+    - Check MongoDB last_accessed updates

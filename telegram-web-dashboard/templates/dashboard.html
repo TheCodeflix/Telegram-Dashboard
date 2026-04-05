@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ user_info.user_name or "My Account" }}{% endblock %}
+
+{% block extra_head %}
+<style>
+.avatar-circle {
+    width: 48px; height: 48px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.2rem; color: #fff; flex-shrink: 0;
+}
+.avatar-sm {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.9rem; color: #fff; flex-shrink: 0;
+}
+.dialog-card { transition: transform 0.15s, box-shadow 0.15s; cursor: pointer; }
+.dialog-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12)!important; }
+.section-title { font-weight: 700; font-size: 1rem; letter-spacing: .5px; text-transform: uppercase; color: #495057; }
+.count-badge { font-size: .75rem; background: #e9ecef; color: #495057; border-radius: 20px; padding: 2px 10px; }
+.stat-card .stat-val { font-size: 2rem; font-weight: 800; }
+.search-box { border-radius: 30px; padding-left: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── User Header ── #}
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="avatar-circle" style="background:#0088cc; font-size:1.4rem;">
+                    {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
+                </div>
+                <div>
+                    <h5 class="mb-0 fw-bold">{{ user_info.user_name or "Unknown" }}</h5>
+                    <small class="text-muted">
+                        {% if user_info.username %}@{{ user_info.username }}{% endif %}
+                        {% if user_info.phone %}&nbsp;·&nbsp;{{ user_info.phone }}{% endif %}
+                        {% if user_info.is_premium %}&nbsp;<span class="badge" style="background:#f4a006;">⭐ Premium</span>{% endif %}
+                    </small>
+                </div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{{ url_for('profile', unique_link=unique_link) }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-user me-1"></i>Profile
+                </a>
+                <a href="{{ url_for('web_logout', unique_link=unique_link) }}"
+                   class="btn btn-sm btn-outline-danger"
+                   onclick="return confirm('Log out and invalidate this link?')">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Stats Row ── #}
+<div class="row g-3 mb-4">
+    {% for label, icon, color, key in [
+        ("Channels",  "broadcast-tower", "#0088cc", "channels"),
+        ("Groups",    "users",           "#27ae60", "groups"),
+        ("Contacts",  "user",            "#8e44ad", "contacts"),
+        ("Bots",      "robot",           "#e67e22", "bots"),
+    ] %}
+    <div class="col-6 col-md-3">
+        <div class="card stat-card text-center h-100">
+            <div class="card-body py-3">
+                <i class="fas fa-{{ icon }} fa-lg mb-2" style="color:{{ color }};"></i>
+                <div class="stat-val" style="color:{{ color }};">{{ counts[key] }}</div>
+                <div class="text-muted small fw-semibold">{{ label }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{# ── Search ── #}
+<div class="mb-4">
+    <div class="input-group">
+        <span class="input-group-text bg-white border-end-0" style="border-radius:30px 0 0 30px;">
+            <i class="fas fa-search text-muted"></i>
+        </span>
+        <input id="searchInput" type="text" class="form-control border-start-0 search-box"
+               placeholder="Filter chats, groups, contacts…" style="border-radius:0 30px 30px 0;">
+        <button class="btn btn-telegram ms-2" onclick="window.location.reload()">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+</div>
+
+{# ── Sections ── #}
+{% for section_key, section_label, section_icon, section_color in [
+    ("channels",  "Channels",  "broadcast-tower", "#0088cc"),
+    ("groups",    "Groups",    "users",           "#27ae60"),
+    ("contacts",  "Contacts",  "user",            "#8e44ad"),
+    ("bots",      "Bots",      "robot",           "#e67e22"),
+] %}
+{% set items = dialogs[section_key] %}
+{% if items %}
+<div class="mb-5 dialog-section" data-section="{{ section_key }}">
+    <div class="d-flex align-items-center mb-3 gap-2">
+        <i class="fas fa-{{ section_icon }}" style="color:{{ section_color }};"></i>
+        <span class="section-title">{{ section_label }}</span>
+        <span class="count-badge">{{ items|length }}</span>
+    </div>
+    <div class="row g-3">
+        {% for item in items %}
+        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}">
+            <div class="card dialog-card h-100">
+                <div class="card-body d-flex align-items-center gap-3 py-3">
+                    <div class="avatar-sm" style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="fw-semibold text-truncate">
+                            {{ item.title }}
+                            {% if item.is_verified %}<i class="fas fa-check-circle text-primary ms-1" title="Verified"></i>{% endif %}
+                            {% if item.is_scam %}<span class="badge bg-danger ms-1">Scam</span>{% endif %}
+                        </div>
+                        <small class="text-muted text-truncate d-block">
+                            {% if item.username %}@{{ item.username }}{% endif %}
+                            {% if item.member_count and section_key in ("channels","groups") %}
+                                {% if item.username %}&nbsp;·&nbsp;{% endif %}
+                                {{ "{:,}".format(item.member_count) }} members
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% if section_key in ("channels","groups") %}
+                    <a href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.id) }}"
+                       class="btn btn-sm btn-outline-primary flex-shrink-0">
+                        <i class="fas fa-eye"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if counts.channels == 0 and counts.groups == 0 and counts.contacts == 0 and counts.bots == 0 %}
+<div class="text-center py-5 text-muted">
+    <i class="fas fa-inbox fa-3x mb-3"></i>
+    <p class="lead">No chats found.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('searchInput').addEventListener('input', function () {
+    const q = this.value.toLowerCase().trim();
+    document.querySelectorAll('.dialog-item').forEach(function (el) {
+        const title = el.dataset.title || '';
+        const uname = el.dataset.username || '';
+        el.style.display = (!q || title.includes(q) || uname.includes(q)) ? '' : 'none';
+    });
+    document.querySelectorAll('.dialog-section').forEach(function (sec) {
+        const visible = [...sec.querySelectorAll('.dialog-item')].some(e => e.style.display !== 'none');
+        sec.style.display = visible ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

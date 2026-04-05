@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Profile — Telegram Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-7">
+
+    {# ── Back ── #}
+    <div class="mb-3">
+        <a href="{{ url_for('dashboard', unique_link=unique_link) }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+        </a>
+    </div>
+
+    {# ── User Info ── #}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-3 mb-4">
+                <div style="width:64px;height:64px;border-radius:50%;background:#0088cc;
+                            display:flex;align-items:center;justify-content:center;
+                            font-size:1.6rem;font-weight:800;color:#fff;">
+                    {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0">{{ user_info.user_name or "Unknown" }}</h5>
+                    <small class="text-muted">
+                        {% if user_info.username %}@{{ user_info.username }}{% endif %}
+                        {% if user_info.is_premium %}&nbsp;<span class="badge" style="background:#f4a006;">⭐ Premium</span>{% endif %}
+                    </small>
+                </div>
+            </div>
+            <h6 class="fw-bold text-muted mb-3 text-uppercase" style="font-size:.8rem;letter-spacing:.5px;">Account Details</h6>
+            <table class="table table-sm table-borderless mb-0">
+                <tr>
+                    <td class="text-muted fw-semibold" style="width:40%">Full Name</td>
+                    <td>{{ user_info.user_name or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">Username</td>
+                    <td>{% if user_info.username %}@{{ user_info.username }}{% else %}—{% endif %}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">User ID</td>
+                    <td><code>{{ user_info.user_id or session.user_id or "—" }}</code></td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">Phone</td>
+                    <td>{{ user_info.phone or "—" }}</td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">Data Center</td>
+                    <td>{% if user_info.dc_id %}DC{{ user_info.dc_id }}{% else %}—{% endif %}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    {# ── Session Info ── #}
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6 class="fw-bold text-muted mb-3 text-uppercase" style="font-size:.8rem;letter-spacing:.5px;">
+                <i class="fas fa-clock me-1"></i>Session Info
+            </h6>
+            <table class="table table-sm table-borderless mb-0">
+                <tr>
+                    <td class="text-muted fw-semibold" style="width:40%">Created At</td>
+                    <td>
+                        {% if session.created_at %}
+                            {{ session.created_at.strftime("%Y-%m-%d %H:%M UTC") }}
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">Last Accessed</td>
+                    <td>
+                        {% if session.last_accessed %}
+                            {{ session.last_accessed.strftime("%Y-%m-%d %H:%M UTC") }}
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-muted fw-semibold">Dashboard Link</td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="dashLink"
+                                   value="{{ domain }}/dashboard/{{ unique_link }}" readonly>
+                            <button class="btn btn-outline-secondary" onclick="copyLink()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    {# ── Actions ── #}
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6 class="fw-bold text-muted mb-3 text-uppercase" style="font-size:.8rem;letter-spacing:.5px;">Actions</h6>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('web_logout', unique_link=unique_link) }}"
+                   class="btn btn-outline-danger"
+                   onclick="return confirm('This will invalidate your dashboard link. Continue?')">
+                    <i class="fas fa-sign-out-alt me-2"></i>Logout &amp; Invalidate Link
+                </a>
+                <a href="{{ url_for('dashboard', unique_link=unique_link) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-th-large me-2"></i>Go to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# ── Danger Zone ── #}
+    <div class="card border-danger">
+        <div class="card-header bg-danger text-white fw-bold">
+            <i class="fas fa-exclamation-triangle me-2"></i>Danger Zone
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Deleting your session data will permanently remove your session string and dashboard link
+                from our database. You will need to re-add your session via the Telegram bot to get a new link.
+                This action cannot be undone.
+            </p>
+            <a href="{{ url_for('web_logout', unique_link=unique_link) }}"
+               class="btn btn-danger"
+               onclick="return confirm('Permanently delete your session data? This cannot be undone.')">
+                <i class="fas fa-trash me-2"></i>Delete Session Data
+            </a>
+        </div>
+    </div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyLink() {
+    const el = document.getElementById('dashLink');
+    el.select();
+    document.execCommand('copy');
+    el.blur();
+    showAlert('Dashboard link copied to clipboard!', 'success');
+}
+</script>
+{% endblock %}

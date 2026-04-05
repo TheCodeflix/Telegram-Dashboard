@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}{{ info.title or "Channel" }} — Telegram Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+.channel-header { background: linear-gradient(135deg,#0088cc,#005f99); color:#fff; border-radius:12px; }
+.tab-pane { padding-top: 1.25rem; }
+.member-avatar { width:36px; height:36px; border-radius:50%; background:#0088cc;
+    display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:.9rem; }
+.msg-card { border-left: 3px solid #0088cc; }
+.admin-badge { font-size:.7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Back ── #}
+<div class="mb-3">
+    <a href="{{ url_for('dashboard', unique_link=unique_link) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+{# ── Channel Header ── #}
+<div class="channel-header p-4 mb-4">
+    <div class="d-flex align-items-center gap-4 flex-wrap">
+        <div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);
+                    display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;">
+            {{ (info.title or "?")[0]|upper }}
+        </div>
+        <div>
+            <h3 class="fw-bold mb-1">{{ info.title or "Unknown" }}</h3>
+            {% if info.username %}
+            <div class="mb-1"><i class="fas fa-at me-1"></i>{{ info.username }}</div>
+            {% endif %}
+            <div class="d-flex gap-3 flex-wrap mt-2">
+                {% if info.member_count %}
+                <span><i class="fas fa-users me-1"></i>{{ "{:,}".format(info.member_count) }} members</span>
+                {% endif %}
+                <span class="badge bg-light text-dark">{{ info.type|capitalize }}</span>
+                {% if info.is_verified %}<span class="badge bg-primary">✓ Verified</span>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% if info.description %}
+    <p class="mt-3 mb-0 opacity-90 small">{{ info.description }}</p>
+    {% endif %}
+</div>
+
+{# ── Tabs ── #}
+<ul class="nav nav-tabs mb-0" id="channelTabs">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-info"><i class="fas fa-info-circle me-1"></i>Info</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-admins"><i class="fas fa-shield-alt me-1"></i>Admins <span class="badge bg-secondary">{{ admins|length }}</span></a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-members"><i class="fas fa-users me-1"></i>Members <span class="badge bg-secondary">{{ members|length }}</span></a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-messages"><i class="fas fa-comment me-1"></i>Messages <span class="badge bg-secondary">{{ messages|length }}</span></a></li>
+</ul>
+
+<div class="tab-content card border-top-0 rounded-top-0 p-3">
+
+    {# Info Tab #}
+    <div class="tab-pane fade show active" id="tab-info">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><i class="fas fa-info me-2 text-primary"></i>Details</h6>
+                        <table class="table table-sm table-borderless mb-0">
+                            <tr><td class="text-muted fw-semibold" style="width:40%">Type</td><td>{{ info.type|capitalize }}</td></tr>
+                            <tr><td class="text-muted fw-semibold">Chat ID</td><td><code>{{ info.id }}</code></td></tr>
+                            {% if info.username %}
+                            <tr><td class="text-muted fw-semibold">Username</td><td>@{{ info.username }}</td></tr>
+                            {% endif %}
+                            {% if info.member_count %}
+                            <tr><td class="text-muted fw-semibold">Members</td><td>{{ "{:,}".format(info.member_count) }}</td></tr>
+                            {% endif %}
+                            <tr><td class="text-muted fw-semibold">Verified</td><td>{{ "Yes" if info.is_verified else "No" }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% if info.invite_link %}
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><i class="fas fa-link me-2 text-success"></i>Invite Link</h6>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-sm" value="{{ info.invite_link }}" readonly id="inviteLink">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="copyInvite()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Admins Tab #}
+    <div class="tab-pane fade" id="tab-admins">
+        {% if admins %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light"><tr>
+                    <th>Admin</th><th>Username</th><th>Role</th><th>Title</th>
+                </tr></thead>
+                <tbody>
+                {% for a in admins %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="member-avatar">{{ (a.name or "?")[0]|upper }}</div>
+                            <span class="fw-semibold">{{ a.name }}</span>
+                            {% if a.is_bot %}<span class="badge bg-info admin-badge">Bot</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>{% if a.username %}<a href="https://t.me/{{ a.username }}" target="_blank">@{{ a.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td><span class="badge bg-warning text-dark">{{ a.status }}</span></td>
+                    <td>{{ a.custom_title or "—" }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4"><i class="fas fa-shield-alt fa-2x mb-2"></i><p>No admin data available.</p></div>
+        {% endif %}
+    </div>
+
+    {# Members Tab #}
+    <div class="tab-pane fade" id="tab-members">
+        {% if members %}
+        <div class="mb-3">
+            <input type="text" id="memberSearch" class="form-control" placeholder="Search members…"
+                   oninput="filterMembers(this.value)">
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="membersTable">
+                <thead class="table-light"><tr>
+                    <th>Member</th><th>Username</th><th>Status</th>
+                </tr></thead>
+                <tbody>
+                {% for m in members %}
+                <tr class="member-row">
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="member-avatar" style="background:#8e44ad;">{{ (m.name or "?")[0]|upper }}</div>
+                            <span>{{ m.name }}</span>
+                            {% if m.is_bot %}<span class="badge bg-info admin-badge">Bot</span>{% endif %}
+                        </div>
+                    </td>
+                    <td>{% if m.username %}<a href="https://t.me/{{ m.username }}" target="_blank">@{{ m.username }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td><span class="badge bg-light text-dark">{{ m.status }}</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small">Showing {{ members|length }} members (limited preview)</p>
+        {% else %}
+        <div class="text-center text-muted py-4"><i class="fas fa-users fa-2x mb-2"></i><p>No member data available.</p></div>
+        {% endif %}
+    </div>
+
+    {# Messages Tab #}
+    <div class="tab-pane fade" id="tab-messages">
+        {% if messages %}
+        <div class="d-flex flex-column gap-3">
+        {% for msg in messages %}
+        <div class="card msg-card">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                    <small class="fw-semibold text-primary">{{ msg.sender or "Channel" }}</small>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if msg.views %}<small class="text-muted"><i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}</small>{% endif %}
+                        {% if msg.is_pinned %}<span class="badge bg-warning text-dark">📌 Pinned</span>{% endif %}
+                        <small class="text-muted">{{ msg.date }}</small>
+                    </div>
+                </div>
+                <p class="mb-0 small">
+                    {% if msg.text %}{{ msg.text[:300] }}{% if msg.text|length > 300 %}…{% endif %}
+                    {% elif msg.has_media %}<span class="text-muted"><i class="fas fa-image me-1"></i>Media</span>
+                    {% else %}<span class="text-muted">Empty message</span>{% endif %}
+                </p>
+            </div>
+        </div>
+        {% endfor %}
+        </div>
+        <p class="text-muted small mt-3">Showing last {{ messages|length }} messages</p>
+        {% else %}
+        <div class="text-center text-muted py-4"><i class="fas fa-comment fa-2x mb-2"></i><p>No messages available.</p></div>
+        {% endif %}
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyInvite() {
+    const el = document.getElementById('inviteLink');
+    el.select();
+    document.execCommand('copy');
+    alert('Invite link copied!');
+}
+function filterMembers(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('#membersTable .member-row').forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}
