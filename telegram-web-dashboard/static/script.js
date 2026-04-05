@@ -8,40 +8,82 @@ document.addEventListener('DOMContentLoaded', function () {
 
 async function checkHealth() {
     try {
-        const response = await fetch('/health');
-        const data = await response.json();
-        const indicator = document.getElementById('health-indicator');
-        if (indicator) {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const el = document.getElementById('health-indicator');
+        if (el) {
             if (data.status === 'healthy') {
-                indicator.textContent = 'Online';
-                indicator.classList.add('status-active');
+                el.textContent = 'Online';
+                el.classList.add('status-active');
             } else {
-                indicator.textContent = 'Offline';
-                indicator.classList.add('status-inactive');
+                el.textContent = 'Offline';
+                el.classList.add('status-inactive');
             }
         }
-    } catch (err) {
-        const indicator = document.getElementById('health-indicator');
-        if (indicator) {
-            indicator.textContent = 'Unreachable';
-            indicator.classList.add('status-inactive');
-        }
+    } catch {
+        const el = document.getElementById('health-indicator');
+        if (el) { el.textContent = 'Unreachable'; el.classList.add('status-inactive'); }
     }
 }
 
-// ─── Alert helper ─────────────────────────────────────────────────────────────
+// ─── Alert bar (top of page) ──────────────────────────────────────────────────
 
 function showAlert(message, type = 'info') {
     const container = document.getElementById('alert-container');
     if (!container) return;
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${type} alert-dismissible fade show`;
-    alert.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
-    container.appendChild(alert);
-    setTimeout(() => { if (alert.parentNode) alert.remove(); }, 6000);
+    const div = document.createElement('div');
+    div.className = `alert alert-${type} alert-dismissible fade show`;
+    div.innerHTML = `${escHtml(message)}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+    container.appendChild(div);
+    setTimeout(() => { if (div.parentNode) div.remove(); }, 6000);
 }
 
-// ─── Spinner helpers ──────────────────────────────────────────────────────────
+// ─── Toast (bottom-right) ─────────────────────────────────────────────────────
+
+function showToast(message, type = 'secondary') {
+    const container = document.getElementById('toast-container');
+    if (!container) { showAlert(message, type); return; }
+
+    const iconMap = {
+        success: 'fa-check-circle text-success',
+        danger:  'fa-exclamation-circle text-danger',
+        warning: 'fa-exclamation-triangle text-warning',
+        info:    'fa-info-circle text-info',
+        secondary: 'fa-circle-dot text-secondary',
+    };
+    const icon = iconMap[type] || iconMap.secondary;
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `
+        <div class="toast align-items-center border-0 shadow" role="alert" aria-live="assertive">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2">
+                    <i class="fas ${icon}"></i>
+                    <span>${escHtml(message)}</span>
+                </div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>`;
+    const toastEl = wrapper.firstElementChild;
+    container.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 4500 });
+    toast.show();
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+}
+
+// ─── Loading overlay ──────────────────────────────────────────────────────────
+
+function showOverlay() {
+    const el = document.getElementById('loading-overlay');
+    if (el) el.classList.remove('d-none');
+}
+
+function hideOverlay() {
+    const el = document.getElementById('loading-overlay');
+    if (el) el.classList.add('d-none');
+}
+
+// ─── Button spinner helpers ───────────────────────────────────────────────────
 
 function setLoading(btnEl, loading) {
     if (!btnEl) return;
@@ -55,36 +97,40 @@ function setLoading(btnEl, loading) {
     }
 }
 
-// ─── Copy to clipboard ────────────────────────────────────────────────────────
+// ─── Copy helpers ─────────────────────────────────────────────────────────────
 
-function copyToClipboard(text, successMsg = 'Copied!') {
+function copyToClipboard(text, msg = 'Copied to clipboard!') {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => showAlert(successMsg, 'success'));
+        navigator.clipboard.writeText(text)
+            .then(() => showToast(msg, 'success'))
+            .catch(() => _fallbackCopy(text, msg));
     } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        showAlert(successMsg, 'success');
+        _fallbackCopy(text, msg);
     }
 }
 
-function copyInputValue(inputId) {
-    const el = document.getElementById(inputId);
-    if (el) copyToClipboard(el.value, 'Link copied to clipboard!');
+function _fallbackCopy(text, msg) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); showToast(msg, 'success'); }
+    catch { showToast('Could not copy — please copy manually.', 'warning'); }
+    document.body.removeChild(ta);
 }
 
-// ─── Channel AJAX helpers ─────────────────────────────────────────────────────
+function copyInputValue(inputId, msg) {
+    const el = document.getElementById(inputId);
+    if (el) copyToClipboard(el.value, msg || 'Link copied!');
+}
 
-// Reads unique_link and channel_id embedded in the page by the template
+// ─── Channel AJAX context ─────────────────────────────────────────────────────
+
 function getChannelCtx() {
     return {
         uniqueLink: document.body.dataset.uniqueLink || '',
-        channelId: document.body.dataset.channelId || '',
+        channelId:  document.body.dataset.channelId  || '',
     };
 }
 
@@ -101,40 +147,44 @@ async function generateInviteLink(btnEl) {
         const res = await fetch(`${channelApiBase()}/invite`, { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-            showInviteResult(data.invite_link);
-            showAlert('New invite link generated!', 'success');
+            _showInviteResult(data.invite_link);
+            showToast('New invite link generated!', 'success');
         } else {
-            showAlert('Error: ' + data.error, 'danger');
+            showToast('Error: ' + data.error, 'danger');
         }
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Network error: ' + e.message, 'danger');
     } finally {
         setLoading(btnEl, false);
     }
 }
 
-function showInviteResult(link) {
-    let box = document.getElementById('generatedInviteBox');
-    if (!box) {
-        box = document.createElement('div');
-        box.id = 'generatedInviteBox';
-        box.className = 'mt-3';
-        const target = document.getElementById('inviteActionsArea');
-        if (target) target.appendChild(box);
-    }
-    box.innerHTML = `
-        <label class="form-label fw-semibold small text-muted">Generated Link</label>
-        <div class="invite-link-box d-flex align-items-center gap-2">
-            <input id="generatedInviteInput" type="text" class="form-control form-control-sm"
-                   value="${link}" readonly>
-            <button class="btn btn-sm btn-outline-secondary" onclick="copyInputValue('generatedInviteInput')">
-                <i class="fas fa-copy"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger"
-                    onclick="revokeInviteLink('${link}', this)">
-                <i class="fas fa-ban"></i> Revoke
-            </button>
-        </div>`;
+function _showInviteResult(link) {
+    // Show in both the Info tab and the Actions tab invite areas
+    ['inviteActionsArea', 'inviteActionsAreaActions'].forEach(id => {
+        let box = document.getElementById('generatedInviteBox_' + id);
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'generatedInviteBox_' + id;
+            box.className = 'mt-3';
+            const target = document.getElementById(id);
+            if (target) target.appendChild(box);
+        }
+        box.innerHTML = `
+            <label class="form-label fw-semibold small text-muted">Generated Link</label>
+            <div class="invite-link-box d-flex align-items-center gap-2 flex-wrap">
+                <input id="genInviteInput_${id}" type="text" class="form-control form-control-sm"
+                       value="${escHtml(link)}" readonly style="min-width:0;flex:1;">
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="copyInputValue('genInviteInput_${id}')">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger"
+                        onclick="revokeInviteLink('${escHtml(link)}', this)">
+                    <i class="fas fa-ban"></i> Revoke
+                </button>
+            </div>`;
+    });
 }
 
 // ─── Revoke invite link ───────────────────────────────────────────────────────
@@ -150,14 +200,13 @@ async function revokeInviteLink(inviteLink, btnEl) {
         });
         const data = await res.json();
         if (data.success) {
-            showAlert('Invite link revoked.', 'warning');
-            const box = document.getElementById('generatedInviteBox');
-            if (box) box.remove();
+            showToast('Invite link revoked.', 'warning');
+            document.querySelectorAll('[id^="generatedInviteBox_"]').forEach(el => el.remove());
         } else {
-            showAlert('Error: ' + data.error, 'danger');
+            showToast('Error: ' + data.error, 'danger');
         }
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Network error: ' + e.message, 'danger');
     } finally {
         setLoading(btnEl, false);
     }
@@ -173,7 +222,7 @@ function openTransferModal() {
 async function submitTransfer(btnEl) {
     const input = document.getElementById('transferUserId');
     const targetUserId = (input ? input.value : '').trim();
-    if (!targetUserId) { showAlert('Please enter a User ID.', 'warning'); return; }
+    if (!targetUserId) { showToast('Please enter a User ID.', 'warning'); return; }
 
     setLoading(btnEl, true);
     try {
@@ -183,15 +232,14 @@ async function submitTransfer(btnEl) {
             body: JSON.stringify({ target_user_id: targetUserId }),
         });
         const data = await res.json();
-        const modalEl = document.getElementById('transferModal');
         if (data.success) {
-            bootstrap.Modal.getInstance(modalEl)?.hide();
-            showAlert('Ownership transferred successfully!', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('transferModal'))?.hide();
+            showToast('Ownership transferred!', 'success');
         } else {
-            showAlert('Error: ' + data.error, 'danger');
+            showToast(data.error, 'warning');
         }
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Network error: ' + e.message, 'danger');
     } finally {
         setLoading(btnEl, false);
     }
@@ -214,12 +262,12 @@ async function deleteMessage(messageId, rowEl) {
                 rowEl.style.opacity = '0';
                 setTimeout(() => rowEl.remove(), 300);
             }
-            showAlert('Message deleted.', 'success');
+            showToast('Message deleted.', 'success');
         } else {
-            showAlert('Error: ' + data.error, 'danger');
+            showToast('Error: ' + data.error, 'danger');
         }
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Network error: ' + e.message, 'danger');
     }
 }
 
@@ -230,38 +278,44 @@ const membersLimit = 50;
 
 async function loadMembers(page, btnEl) {
     if (btnEl) setLoading(btnEl, true);
-    const container = document.getElementById('membersTableBody');
+    const tbody  = document.getElementById('membersTableBody');
     const status = document.getElementById('membersStatus');
-    if (!container) return;
+    if (!tbody) return;
 
     try {
         const res = await fetch(`${channelApiBase()}/members?page=${page}&limit=${membersLimit}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!data.success) { showAlert('Error: ' + data.error, 'danger'); return; }
+        if (!data.success) { showToast('Error: ' + data.error, 'danger'); return; }
 
-        container.innerHTML = data.members.map(m => `
-            <tr>
-                <td>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="member-avatar" style="background:${m.avatar_color || '#0088cc'}">
-                            ${m.avatar_letter || '?'}
+        tbody.innerHTML = data.members.length
+            ? data.members.map(m => `
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="member-avatar" style="background:${escHtml(m.avatar_color || '#0088cc')}">
+                                ${escHtml(m.avatar_letter || '?')}
+                            </div>
+                            <span>${escHtml(m.name)}</span>
+                            ${m.is_bot ? '<span class="badge bg-info ms-1" style="font-size:.7rem">Bot</span>' : ''}
                         </div>
-                        <span>${escHtml(m.name)}</span>
-                        ${m.is_bot ? '<span class="badge bg-info ms-1" style="font-size:.7rem">Bot</span>' : ''}
-                    </div>
-                </td>
-                <td>${m.username ? `<a href="https://t.me/${m.username}" target="_blank">@${escHtml(m.username)}</a>` : '<span class="text-muted">—</span>'}</td>
-                <td><span class="badge bg-light text-dark">${escHtml(m.status)}</span></td>
-            </tr>`).join('');
+                    </td>
+                    <td>${m.username
+                        ? `<a href="https://t.me/${escHtml(m.username)}" target="_blank">@${escHtml(m.username)}</a>`
+                        : '<span class="text-muted">—</span>'}</td>
+                    <td><span class="badge bg-light text-dark">${escHtml(m.status)}</span></td>
+                </tr>`).join('')
+            : '<tr><td colspan="3" class="text-center text-muted py-4">No members found.</td></tr>';
 
         membersPage = page;
-        if (status) {
-            status.textContent = `Page ${page} · Showing ${data.members.length} members`;
-        }
-        document.getElementById('membersPrevBtn').disabled = page <= 1;
-        document.getElementById('membersNextBtn').disabled = data.members.length < membersLimit;
+        if (status) status.textContent = `Page ${page} · Showing ${data.members.length} members`;
+
+        const prevBtn = document.getElementById('membersPrevBtn');
+        const nextBtn = document.getElementById('membersNextBtn');
+        if (prevBtn) prevBtn.disabled = page <= 1;
+        if (nextBtn) nextBtn.disabled = data.members.length < membersLimit;
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Failed to load members: ' + e.message, 'danger');
     } finally {
         if (btnEl) setLoading(btnEl, false);
     }
@@ -278,41 +332,51 @@ const messagesLimit = 30;
 async function loadMessages(page, btnEl) {
     if (btnEl) setLoading(btnEl, true);
     const container = document.getElementById('messagesContainer');
-    const status = document.getElementById('messagesStatus');
+    const status    = document.getElementById('messagesStatus');
     if (!container) return;
 
     try {
         const res = await fetch(`${channelApiBase()}/messages?page=${page}&limit=${messagesLimit}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!data.success) { showAlert('Error: ' + data.error, 'danger'); return; }
+        if (!data.success) { showToast('Error: ' + data.error, 'danger'); return; }
 
-        container.innerHTML = data.messages.map(msg => `
-            <div class="msg-card card mb-2" id="msg-${msg.id}">
-                <div class="card-body py-2 px-3">
-                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
-                        <small class="fw-semibold text-primary">${escHtml(msg.sender || 'Channel')}</small>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            ${msg.views ? `<small class="text-muted"><i class="fas fa-eye me-1"></i>${fmtNum(msg.views)}</small>` : ''}
-                            ${msg.is_pinned ? '<span class="badge bg-warning text-dark">📌 Pinned</span>' : ''}
-                            <small class="text-muted">${escHtml(msg.date)}</small>
-                            <button class="btn btn-xs btn-outline-danger delete-msg-btn"
-                                    onclick="deleteMessage(${msg.id}, document.getElementById('msg-${msg.id}'))">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
+        container.innerHTML = data.messages.length
+            ? data.messages.map(msg => `
+                <div class="msg-card card mb-2" id="msg-${msg.id}">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
+                            <small class="fw-semibold text-primary">${escHtml(msg.sender || 'Channel')}</small>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                ${msg.views ? `<small class="text-muted"><i class="fas fa-eye me-1"></i>${fmtNum(msg.views)}</small>` : ''}
+                                ${msg.is_pinned ? '<span class="badge bg-warning text-dark">📌 Pinned</span>' : ''}
+                                <small class="text-muted">${escHtml(msg.date)}</small>
+                                <button class="btn btn-xs btn-outline-danger delete-msg-btn"
+                                        onclick="deleteMessage(${msg.id}, document.getElementById('msg-${msg.id}'))">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
                         </div>
+                        <p class="mb-0 small">
+                            ${msg.short_text
+                                ? escHtml(msg.short_text)
+                                : (msg.media_label
+                                    ? `<span class="text-muted">${escHtml(msg.media_label)}</span>`
+                                    : '<span class="text-muted">Empty message</span>')}
+                        </p>
                     </div>
-                    <p class="mb-0 small">
-                        ${msg.short_text ? escHtml(msg.short_text) : (msg.media_label ? `<span class="text-muted">${msg.media_label}</span>` : '<span class="text-muted">Empty message</span>')}
-                    </p>
-                </div>
-            </div>`).join('');
+                </div>`).join('')
+            : '<div class="text-center text-muted py-4"><i class="fas fa-comment fa-2x mb-2"></i><p>No messages found.</p></div>';
 
         messagesPage = page;
         if (status) status.textContent = `Page ${page} · Showing ${data.messages.length} messages`;
-        document.getElementById('messagesPrevBtn').disabled = page <= 1;
-        document.getElementById('messagesNextBtn').disabled = data.messages.length < messagesLimit;
+
+        const prevBtn = document.getElementById('messagesPrevBtn');
+        const nextBtn = document.getElementById('messagesNextBtn');
+        if (prevBtn) prevBtn.disabled = page <= 1;
+        if (nextBtn) nextBtn.disabled = data.messages.length < messagesLimit;
     } catch (e) {
-        showAlert('Network error: ' + e.message, 'danger');
+        showToast('Failed to load messages: ' + e.message, 'danger');
     } finally {
         if (btnEl) setLoading(btnEl, false);
     }
@@ -325,7 +389,7 @@ function messagesNext() { loadMessages(messagesPage + 1); }
 
 function filterMembers(q) {
     q = q.toLowerCase();
-    document.querySelectorAll('#membersTableBody tr').forEach(function (row) {
+    document.querySelectorAll('#membersTableBody tr').forEach(row => {
         row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
 }
@@ -333,12 +397,13 @@ function filterMembers(q) {
 // ─── Utility ──────────────────────────────────────────────────────────────────
 
 function escHtml(str) {
-    if (!str) return '';
+    if (str == null) return '';
     return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
 }
 
 function fmtNum(n) {

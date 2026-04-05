@@ -1,20 +1,57 @@
 /* Telegram Web Dashboard - Main Stylesheet */
 
+/* ─── Root variables ──────────────────────────────────────────────────────── */
+:root {
+    --tg-blue: #0088cc;
+    --tg-dark: #005f99;
+    --tg-light-bg: #f0f2f5;
+}
+
+/* ─── Base ────────────────────────────────────────────────────────────────── */
+
 body {
-    background-color: #f0f2f5;
+    background-color: var(--tg-light-bg);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* ─── Loading overlay ─────────────────────────────────────────────────────── */
+
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+    z-index: 9999;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+#loading-overlay.d-none {
+    display: none !important;
+}
+
+.loading-inner {
+    text-align: center;
 }
 
 /* ─── Navbar ──────────────────────────────────────────────────────────────── */
 
 .navbar {
-    background: linear-gradient(135deg, #0088cc, #005f99);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(135deg, var(--tg-blue), var(--tg-dark));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
 }
 
 .navbar-brand {
     font-weight: 700;
-    letter-spacing: 0.5px;
+    letter-spacing: .5px;
 }
 
 /* ─── Cards ───────────────────────────────────────────────────────────────── */
@@ -22,29 +59,30 @@ body {
 .card {
     border: none;
     border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+    transition: transform .15s ease, box-shadow .15s ease;
 }
 
 .card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .12);
 }
 
 /* ─── Buttons ─────────────────────────────────────────────────────────────── */
 
 .btn-telegram {
-    background-color: #0088cc;
+    background-color: var(--tg-blue);
     color: #fff;
     border: none;
     border-radius: 8px;
     padding: 10px 24px;
     font-weight: 600;
-    transition: background-color 0.2s ease;
+    transition: background-color .2s ease;
 }
 
-.btn-telegram:hover {
-    background-color: #006fa8;
+.btn-telegram:hover,
+.btn-telegram:focus {
+    background-color: var(--tg-dark);
     color: #fff;
 }
 
@@ -61,7 +99,7 @@ body {
     display: inline-block;
     padding: 4px 12px;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: .8rem;
     font-weight: 600;
 }
 
@@ -82,16 +120,16 @@ footer {
     border-top: 1px solid #e9ecef;
     padding: 20px 0;
     color: #6c757d;
-    font-size: 0.9rem;
+    font-size: .9rem;
 }
 
-/* ─── Member / admin avatars ──────────────────────────────────────────────── */
+/* ─── Avatars ─────────────────────────────────────────────────────────────── */
 
 .member-avatar {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #0088cc;
+    background: var(--tg-blue);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -127,7 +165,7 @@ footer {
 /* ─── Message cards ───────────────────────────────────────────────────────── */
 
 .msg-card {
-    border-left: 3px solid #0088cc !important;
+    border-left: 3px solid var(--tg-blue) !important;
     border-radius: 8px;
     transition: opacity .3s;
 }
@@ -154,7 +192,7 @@ footer {
     font-size: .85rem;
 }
 
-/* ─── Loading spinner ─────────────────────────────────────────────────────── */
+/* ─── Spinners ────────────────────────────────────────────────────────────── */
 
 .spinner-overlay {
     display: flex;
@@ -186,7 +224,7 @@ footer {
     padding: 2px 8px;
 }
 
-/* ─── Pagination controls ─────────────────────────────────────────────────── */
+/* ─── Pagination bar ──────────────────────────────────────────────────────── */
 
 .pagination-bar {
     display: flex;
@@ -212,7 +250,7 @@ footer {
 /* ─── Channel header ──────────────────────────────────────────────────────── */
 
 .channel-header {
-    background: linear-gradient(135deg, #0088cc, #005f99);
+    background: linear-gradient(135deg, var(--tg-blue), var(--tg-dark));
     color: #fff;
     border-radius: 12px;
 }
@@ -224,10 +262,35 @@ footer {
     border-radius: 12px;
 }
 
-.modal-header {
-    border-bottom: 1px solid #f0f2f5;
+.modal-header { border-bottom: 1px solid #f0f2f5; }
+.modal-footer { border-top: 1px solid #f0f2f5; }
+
+/* ─── Toast notifications ─────────────────────────────────────────────────── */
+
+.toast {
+    min-width: 280px;
+    border-radius: 10px;
+    font-size: .9rem;
 }
 
-.modal-footer {
-    border-top: 1px solid #f0f2f5;
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 576px) {
+    .channel-header .d-flex { flex-direction: column; }
+    .channel-header .gap-4 { gap: 1rem !important; }
+    h3 { font-size: 1.3rem; }
+    .pagination-bar { flex-direction: column; align-items: flex-start; }
+    .tab-content.card { padding: .75rem !important; }
+    .table-responsive { font-size: .85rem; }
+    .btn-telegram { width: 100%; text-align: center; }
+    .member-avatar { width: 30px; height: 30px; font-size: .8rem; }
+    .msg-card .delete-msg-btn { opacity: 1; }
+}
+
+@media (max-width: 768px) {
+    .container { padding-left: 12px; padding-right: 12px; }
+    .card { border-radius: 8px; }
+    .nav-tabs .nav-link { padding: .4rem .6rem; font-size: .85rem; }
+    .invite-link-box { flex-direction: column; align-items: stretch; }
+    .invite-link-box .btn { width: 100%; }
 }

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Server Error — Telegram Dashboard{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+    <div class="mb-4" style="font-size:5rem;">⚠️</div>
+    <h1 class="fw-bold mb-2" style="font-size:3rem;color:#e74c3c;">500</h1>
+    <h4 class="fw-semibold mb-3">Something Went Wrong</h4>
+    <p class="text-muted mb-4" style="max-width:480px;margin:0 auto;">
+        An unexpected error occurred while processing your request. This is usually
+        a temporary issue. Please try refreshing the page or come back in a moment.
+    </p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <button onclick="location.reload()" class="btn btn-telegram">
+            <i class="fas fa-sync-alt me-1"></i>Try Again
+        </button>
+        <a href="/" class="btn btn-outline-secondary">
+            <i class="fas fa-home me-1"></i>Go Home
+        </a>
+    </div>
+    <p class="text-muted small mt-4">
+        If the problem persists, your Telegram session may have expired.
+        Use <code>/logout</code> in the bot and <code>/start</code> again.
+    </p>
+</div>
+{% endblock %}

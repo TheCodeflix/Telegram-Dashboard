@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Not Found — Telegram Dashboard{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+    <div class="mb-4" style="font-size:5rem;">🔍</div>
+    <h1 class="fw-bold mb-2" style="font-size:3rem;color:#0088cc;">404</h1>
+    <h4 class="fw-semibold mb-3">Page Not Found</h4>
+    <p class="text-muted mb-4" style="max-width:480px;margin:0 auto;">
+        The dashboard link you followed is invalid, has expired, or the session
+        was deleted via the bot. Each link is private and single-use per account.
+    </p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="/" class="btn btn-telegram">
+            <i class="fas fa-home me-1"></i>Go Home
+        </a>
+    </div>
+    <p class="text-muted small mt-4">
+        If you think this is a mistake, use <code>/status</code> in the bot
+        to retrieve your current dashboard link.
+    </p>
+</div>
+{% endblock %}

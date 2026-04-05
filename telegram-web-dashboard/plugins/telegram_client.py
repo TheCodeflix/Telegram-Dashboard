@@ -2,6 +2,7 @@ import os
 import logging
 import asyncio
 import base64
+import functools
 from pyrogram import Client
 from pyrogram.enums import ChatType
 from pyrogram.errors import FloodWait
@@ -11,6 +12,33 @@ logger = logging.getLogger(__name__)
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 
+_MAX_FLOOD_WAIT = 30   # cap how long we'll sleep on a single FloodWait
+_MAX_RETRIES = 3
+
+
+# ─── Retry decorator ─────────────────────────────────────────────────────────
+
+def _retry_flood(coro_fn):
+    """Wraps an async function to auto-retry on FloodWait up to _MAX_RETRIES times."""
+    @functools.wraps(coro_fn)
+    async def wrapper(*args, **kwargs):
+        for attempt in range(_MAX_RETRIES):
+            try:
+                return await coro_fn(*args, **kwargs)
+            except FloodWait as e:
+                wait = min(e.value, _MAX_FLOOD_WAIT)
+                logger.warning(
+                    "FloodWait in %s: sleeping %ds (attempt %d/%d)",
+                    coro_fn.__name__, wait, attempt + 1, _MAX_RETRIES,
+                )
+                if attempt < _MAX_RETRIES - 1:
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+    return wrapper
+
+
+# ─── Client factory ──────────────────────────────────────────────────────────
 
 def create_client(session_string: str) -> Client:
     return Client(
@@ -24,6 +52,7 @@ def create_client(session_string: str) -> Client:
 
 # ─── Async operations ─────────────────────────────────────────────────────────
 
+@_retry_flood
 async def _get_user_info(client: Client) -> dict:
     me = await client.get_me()
     return {
@@ -38,6 +67,7 @@ async def _get_user_info(client: Client) -> dict:
     }
 
 
+@_retry_flood
 async def _get_all_dialogs(client: Client, limit: int = 200) -> list:
     dialogs = []
     try:
@@ -57,14 +87,12 @@ async def _get_all_dialogs(client: Client, limit: int = 200) -> list:
                 dialogs.append(entry)
             except Exception as e:
                 logger.debug("Skipping dialog %s: %s", getattr(chat, "id", "?"), e)
-    except FloodWait as e:
-        logger.warning("FloodWait getting dialogs: %s seconds", e.value)
-        await asyncio.sleep(e.value)
     except Exception as e:
         logger.error("Error fetching dialogs: %s", e)
     return dialogs
 
 
+@_retry_flood
 async def _get_channel_info(client: Client, channel_id: int) -> dict:
     try:
         chat = await client.get_chat(channel_id)
@@ -85,6 +113,7 @@ async def _get_channel_info(client: Client, channel_id: int) -> dict:
         return {}
 
 
+@_retry_flood
 async def _get_channel_admins(client: Client, channel_id: int) -> list:
     admins = []
     try:
@@ -103,7 +132,9 @@ async def _get_channel_admins(client: Client, channel_id: int) -> list:
     return admins
 
 
-async def _get_channel_members(client: Client, channel_id: int, limit: int = 50, offset: int = 0) -> dict:
+@_retry_flood
+async def _get_channel_members(client: Client, channel_id: int,
+                                limit: int = 50, offset: int = 0) -> dict:
     members = []
     try:
         count = 0
@@ -126,7 +157,9 @@ async def _get_channel_members(client: Client, channel_id: int, limit: int = 50,
     return {"members": members, "count": len(members), "offset": offset, "limit": limit}
 
 
-async def _get_channel_messages(client: Client, channel_id: int, limit: int = 30, offset: int = 0) -> list:
+@_retry_flood
+async def _get_channel_messages(client: Client, channel_id: int,
+                                 limit: int = 30, offset: int = 0) -> list:
     messages = []
     try:
         async for msg in client.get_chat_history(channel_id, limit=limit, offset=offset):
@@ -150,6 +183,7 @@ async def _get_channel_messages(client: Client, channel_id: int, limit: int = 30
     return messages
 
 
+@_retry_flood
 async def _get_pinned_messages(client: Client, channel_id: int) -> list:
     pinned = []
     try:
@@ -172,6 +206,7 @@ async def _get_pinned_messages(client: Client, channel_id: int) -> list:
     return pinned
 
 
+@_retry_flood
 async def _create_invite_link(client: Client, channel_id: int,
                                expire_date=None, member_limit=None) -> str:
     link = await client.create_chat_invite_link(
@@ -182,11 +217,13 @@ async def _create_invite_link(client: Client, channel_id: int,
     return link.invite_link
 
 
+@_retry_flood
 async def _revoke_invite_link(client: Client, channel_id: int, invite_link: str) -> bool:
     await client.revoke_chat_invite_link(channel_id, invite_link)
     return True
 
 
+@_retry_flood
 async def _delete_message(client: Client, channel_id: int, message_id: int) -> bool:
     await client.delete_messages(channel_id, message_id)
     return True
@@ -205,11 +242,11 @@ async def _get_chat_photo(client: Client, chat_id: int):
     return None
 
 
-# ─── Public sync wrappers ────────────────────────────────────────────────────
+# ─── Sync wrapper (one fresh event loop per call) ────────────────────────────
 
 def run_in_session(session_string: str, coro_factory):
     """
-    Creates a fresh Pyrogram client, connects, runs coro_factory(client),
+    Creates a Pyrogram client, connects, runs coro_factory(client),
     disconnects, and returns the result. Always runs in a brand-new event loop.
     """
     async def _runner():
@@ -225,6 +262,8 @@ def run_in_session(session_string: str, coro_factory):
     return asyncio.run(_runner())
 
 
+# ─── Public sync wrappers ────────────────────────────────────────────────────
+
 def get_user_info(session_string: str) -> dict:
     return run_in_session(session_string, _get_user_info)
 
@@ -239,16 +278,16 @@ def get_channel_info(session_string: str, channel_id: int) -> dict:
 
 def get_channel_full(session_string: str, channel_id: int) -> dict:
     async def _all(client):
-        info = await _get_channel_info(client, channel_id)
-        admins = await _get_channel_admins(client, channel_id)
-        members_data = await _get_channel_members(client, channel_id, limit=50)
-        messages = await _get_channel_messages(client, channel_id, limit=30)
-        photo = await _get_chat_photo(client, channel_id)
+        info    = await _get_channel_info(client, channel_id)
+        admins  = await _get_channel_admins(client, channel_id)
+        members = await _get_channel_members(client, channel_id, limit=50)
+        msgs    = await _get_channel_messages(client, channel_id, limit=30)
+        photo   = await _get_chat_photo(client, channel_id)
         return {
             "info": info,
             "admins": admins,
-            "members": members_data.get("members", []),
-            "messages": messages,
+            "members": members.get("members", []),
+            "messages": msgs,
             "photo": photo,
         }
     return run_in_session(session_string, _all)
@@ -258,7 +297,7 @@ def get_channel_members_page(session_string: str, channel_id: int,
                               limit: int = 50, offset: int = 0) -> dict:
     return run_in_session(
         session_string,
-        lambda c: _get_channel_members(c, channel_id, limit=limit, offset=offset)
+        lambda c: _get_channel_members(c, channel_id, limit=limit, offset=offset),
     )
 
 
@@ -266,7 +305,7 @@ def get_channel_messages_page(session_string: str, channel_id: int,
                                limit: int = 30, offset: int = 0) -> list:
     return run_in_session(
         session_string,
-        lambda c: _get_channel_messages(c, channel_id, limit=limit, offset=offset)
+        lambda c: _get_channel_messages(c, channel_id, limit=limit, offset=offset),
     )
 
 
@@ -278,21 +317,21 @@ def create_invite_link(session_string: str, channel_id: int,
                         expire_date=None, member_limit=None) -> str:
     return run_in_session(
         session_string,
-        lambda c: _create_invite_link(c, channel_id, expire_date, member_limit)
+        lambda c: _create_invite_link(c, channel_id, expire_date, member_limit),
     )
 
 
 def revoke_invite_link(session_string: str, channel_id: int, invite_link: str) -> bool:
     return run_in_session(
         session_string,
-        lambda c: _revoke_invite_link(c, channel_id, invite_link)
+        lambda c: _revoke_invite_link(c, channel_id, invite_link),
     )
 
 
 def delete_message(session_string: str, channel_id: int, message_id: int) -> bool:
     return run_in_session(
         session_string,
-        lambda c: _delete_message(c, channel_id, message_id)
+        lambda c: _delete_message(c, channel_id, message_id),
     )
 
 
@@ -300,7 +339,7 @@ def get_chat_photo(session_string: str, chat_id: int):
     return run_in_session(session_string, lambda c: _get_chat_photo(c, chat_id))
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+# ─── Internal helpers ─────────────────────────────────────────────────────────
 
 def _full_name(user) -> str:
     parts = [getattr(user, "first_name", "") or "", getattr(user, "last_name", "") or ""]
