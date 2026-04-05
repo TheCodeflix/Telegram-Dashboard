@@ -57,6 +57,7 @@ bot = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
+    in_memory=True,
 )
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -582,13 +583,18 @@ async def debug_all_messages(client: Client, message: Message):
 async def main():
     logger.info("Starting Telegram Dashboard Bot...")
     try:
-        async with bot:
-            me = await bot.get_me()
-            logger.info("Bot running as @%s (id=%s)", me.username, me.id)
-            await asyncio.Event().wait()
+        await bot.start()
+        me = await bot.get_me()
+        logger.info("Bot running as @%s (id=%s)", me.username, me.id)
+        await asyncio.Event().wait()
     except Exception as e:
         logger.critical("Bot crashed: %s", e, exc_info=True)
         raise
+    finally:
+        try:
+            await bot.stop()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
