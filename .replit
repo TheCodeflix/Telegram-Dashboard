@@ -26,6 +26,10 @@ author = "agent"
 task = "workflow.run"
 args = "Telegram Dashboard - Flask"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Telegram Bot"
+
 [[workflows.workflow]]
 name = "Telegram Dashboard - Flask"
 author = "agent"
@@ -37,6 +41,17 @@ waitForPort = 8000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow]]
+name = "Telegram Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd telegram-web-dashboard && python bot.py"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"

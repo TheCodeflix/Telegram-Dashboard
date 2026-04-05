@@ -11,8 +11,9 @@ from pyrogram.errors import (
     AuthKeyInvalid,
     FloodWait,
     BadRequest,
-    ConnectionError as PyroConnectionError,
 )
+
+PyroConnectionError = ConnectionError
 
 load_dotenv()
 
