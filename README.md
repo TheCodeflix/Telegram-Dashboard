@@ -199,4 +199,3 @@ telegram-web-dashboard/
 - Dashboard links are UUID-based and private — do not share them
 - Session strings grant full access to your Telegram account — handle with care
 - Logs are written to `logs/` — exclude them from version control (`.dockerignore` already does this)
-- Ownership transfer is intentionally blocked in the web UI — use the official Telegram app for that
