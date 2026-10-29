@@ -1,5 +1,5 @@
-import os
 import logging
+import config
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ConfigurationError
 
@@ -12,8 +12,8 @@ _db = None
 def connect_to_mongodb():
     global _client, _db
 
-    mongodb_uri = os.environ.get("MONGODB_URI")
-    database_name = os.environ.get("DATABASE_NAME", "telegram_dashboard")
+    mongodb_uri = config.MONGODB_URI
+    database_name = config.DATABASE_NAME
 
     if not mongodb_uri:
         logger.error("MONGODB_URI environment variable is not set")

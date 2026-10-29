@@ -5,15 +5,13 @@ import time
 import threading
 from functools import wraps
 from flask import Flask, render_template, jsonify, request
-from dotenv import load_dotenv
-
-load_dotenv()
+import config
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 
 os.makedirs("logs", exist_ok=True)
 
-_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
+_log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 _log_fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 logging.basicConfig(level=_log_level, format=_log_fmt)
@@ -41,10 +39,10 @@ import plugins.channel_utils as channel_utils      # noqa: E402
 # ─── Flask App ────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.environ.get("SESSION_SECRET", "dev-secret"))
+app.secret_key = config.FLASK_SECRET_KEY or config.SESSION_SECRET or "dev-secret"
 
-DOMAIN = os.environ.get("DOMAIN", "https://your-app.koyeb.app")
-SESSION_MAX_AGE_HOURS = int(os.environ.get("SESSION_MAX_AGE_HOURS", 0))  # 0 = no expiry
+DOMAIN = config.DOMAIN
+SESSION_MAX_AGE_HOURS = config.SESSION_MAX_AGE_HOURS  # 0 = no expiry
 
 # ─── MongoDB ──────────────────────────────────────────────────────────────────
 
@@ -534,7 +532,7 @@ def channel_messages_ajax(unique_link, channel_id):
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    debug = os.environ.get("FLASK_ENV", "production") == "development"
+    port = config.PORT
+    debug = config.FLASK_ENV == "development"
     logger.info("Starting Flask app on port %d (debug=%s)", port, debug)
     app.run(host="0.0.0.0", port=port, debug=debug)

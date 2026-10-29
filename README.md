@@ -2,20 +2,10 @@
 
 A self-hosted web dashboard for your Telegram account. Submit your Pyrogram session string to the bot, receive a private dashboard link, and view your channels, groups, contacts, and messages — right from a browser.
 
----
 
 ## Features
 
-- **Telegram Bot** — Accepts Pyrogram session strings, verifies them (including 2FA), and generates a unique dashboard link
-- **Web Dashboard** — View all dialogs (channels, groups, contacts, bots) with live stats
-- **Channel View** — Member list, message history, admin list, invite link management, message deletion
-- **AJAX Pagination** — Load members and messages on demand, page by page
-- **Session Management** — Logout, regenerate link, check status — all via the bot
-- **Security** — Rate limiting (100 req/min), security headers, no plain-text secret storage
-- **Caching** — 5-minute in-memory cache for Telegram API responses
-- **Docker-ready** — Single `docker run` starts both the bot and the Flask web server
 
----
 
 ## Quick Start
 
@@ -32,15 +22,15 @@ cd telegram-web-dashboard
 pip install -r requirements.txt
 ```
 
-### 3. Set environment variables
+### 3. Configure the application
 
-Copy `.env` and fill in real values:
+Create your private config file from the template:
 
 ```bash
-cp .env .env.local
+cp config.example.py config.py
 ```
 
-Required variables (see [Environment Variables](#environment-variables) below).
+Set your Telegram API credentials, bot token, MongoDB URI, and Flask secret in `config.py`. Keep this file private; it is excluded from Git.
 
 ### 4. Run locally
 
@@ -61,24 +51,25 @@ python bot.py &
 gunicorn --config gunicorn.conf.py app:app
 ```
 
----
 
-## Environment Variables
+## Configuration
 
-| Variable | Description | Example |
+| Setting | Description |
 |---|---|---|
-| `MONGODB_URI` | MongoDB Atlas (or local) connection string | `mongodb+srv://user:pass@cluster/db` |
-| `DATABASE_NAME` | MongoDB database name | `telegram_dashboard` |
-| `BOT_TOKEN` | Telegram Bot token from @BotFather | `123456:ABC-...` |
-| `API_ID` | Telegram API ID from my.telegram.org | `12345678` |
-| `API_HASH` | Telegram API hash from my.telegram.org | `abc123def456...` |
-| `FLASK_SECRET_KEY` | Flask session secret (random string) | `some-random-secret` |
-| `PORT` | Web server port | `8000` |
-| `DOMAIN` | Public URL of your deployment | `https://your-app.koyeb.app` |
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `SESSION_MAX_AGE_HOURS` | Auto-expire sessions after N hours (0 = never) | `0` |
+| `MONGODB_URI` | MongoDB Atlas (or local) connection string |
+| `DATABASE_NAME` | MongoDB database name |
+| `BOT_TOKEN` | Telegram Bot token from @BotFather |
+| `BOT_OWNER` | Telegram user ID allowed to manage the bot |
+| `API_ID` | Telegram API ID from my.telegram.org |
+| `API_HASH` | Telegram API hash from my.telegram.org |
+| `FLASK_SECRET_KEY` | Flask session secret |
+| `SESSION_SECRET` | Fallback Flask session secret |
+| `FLASK_ENV` | Flask runtime mode |
+| `PORT` | Web server port |
+| `DOMAIN` | Public URL of your deployment |
+| `LOG_LEVEL` | Logging level |
+| `SESSION_MAX_AGE_HOURS` | Auto-expire sessions after N hours (0 = never) |
 
----
 
 ## Docker Deployment
 
@@ -86,7 +77,7 @@ gunicorn --config gunicorn.conf.py app:app
 
 ```bash
 docker build -t tg-dashboard .
-docker run -p 8000:8000 \
+docker run -p 8080:8080 \
   -e MONGODB_URI="..." \
   -e BOT_TOKEN="..." \
   -e API_ID="..." \
@@ -96,7 +87,6 @@ docker run -p 8000:8000 \
   tg-dashboard
 ```
 
----
 
 ## Koyeb Deployment
 
@@ -104,13 +94,11 @@ docker run -p 8000:8000 \
 2. Go to [koyeb.com](https://koyeb.com) and create a new app
 3. Connect your GitHub repository
 4. Set the **Dockerfile** build method
-5. Add all environment variables in the Koyeb dashboard:
-   - `MONGODB_URI`, `BOT_TOKEN`, `API_ID`, `API_HASH`, `FLASK_SECRET_KEY`, `DOMAIN`
-6. Set `DOMAIN` to your Koyeb app URL (e.g. `https://your-app.koyeb.app`)
+5. Provide a private `config.py` to the deployment build with the required settings.
+6. Set `DOMAIN` in `config.py` to your Koyeb app URL (e.g. `https://your-app.koyeb.app`)
 7. Deploy and monitor build logs
 8. Once live, send `/start` to your bot to test the full flow
 
----
 
 ## Usage
 
@@ -133,7 +121,6 @@ docker run -p 8000:8000 \
 | `/cancel` | Cancel the current operation |
 | `/help` | Show all commands |
 
----
 
 ## Project Structure
 
@@ -145,7 +132,8 @@ telegram-web-dashboard/
 ├── requirements.txt
 ├── Dockerfile
 ├── .dockerignore
-├── .env                    # Environment variables template
+├── config.example.py       # Configuration template
+├── config.py               # Private local configuration (not tracked by Git)
 ├── database/
 │   ├── mongodb.py          # MongoDB connection
 │   └── models.py           # DB operations (sessions, user_sessions)
@@ -170,32 +158,19 @@ telegram-web-dashboard/
     └── bot.log
 ```
 
----
 
 ## Troubleshooting
 
 **Bot doesn't respond**
-- Check `BOT_TOKEN`, `API_ID`, `API_HASH` are set correctly
-- Check `logs/bot.log` for errors
 
 **Dashboard shows 503 / "session expired"**
-- Your Pyrogram session string may have been revoked by Telegram
-- Use `/logout` in the bot then `/start` to submit a new session
 
 **MongoDB connection error**
-- Verify `MONGODB_URI` is correct and the IP is whitelisted in Atlas
 
 **FloodWait errors**
-- Telegram is rate-limiting your account. The bot and dashboard will automatically wait and retry
 
 **Cannot access dashboard after deployment**
-- Ensure `DOMAIN` is set to the correct public URL
-- Check that port 8000 is exposed and not blocked
 
----
 
 ## Security Notes
 
-- Dashboard links are UUID-based and private — do not share them
-- Session strings grant full access to your Telegram account — handle with care
-- Logs are written to `logs/` — exclude them from version control (`.dockerignore` already does this)

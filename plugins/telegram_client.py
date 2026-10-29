@@ -1,8 +1,8 @@
-import os
 import logging
 import asyncio
 import base64
 import functools
+import config
 from pyrogram import Client, raw
 from pyrogram.enums import ChatType
 from pyrogram.errors import FloodWait
@@ -10,8 +10,8 @@ from pyrogram.utils import compute_password_check
 
 logger = logging.getLogger(__name__)
 
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
+API_ID = config.API_ID
+API_HASH = config.API_HASH
 
 _MAX_FLOOD_WAIT = 30   # cap how long we'll sleep on a single FloodWait
 _MAX_RETRIES = 3

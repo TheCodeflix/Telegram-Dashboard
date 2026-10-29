@@ -13,6 +13,6 @@ COPY . .
 
 RUN mkdir -p logs
 
-EXPOSE 8000
+EXPOSE 8080
 
 CMD ["sh", "-c", "python bot.py & gunicorn --config gunicorn.conf.py app:app"]

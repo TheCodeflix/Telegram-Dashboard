@@ -1,11 +1,12 @@
 import os
 import asyncio
 import logging
+import html
 import urllib.request
 import urllib.parse
 import json
 from types import SimpleNamespace
-from dotenv import load_dotenv
+import config
 from pyrogram import Client
 from pyrogram.errors import (
     SessionPasswordNeeded,
@@ -18,13 +19,11 @@ from pyrogram.errors import (
 
 PyroConnectionError = ConnectionError
 
-load_dotenv()
-
 # ─── Logging ──────────────────────────────────────────────────────────────────
 
 os.makedirs("logs", exist_ok=True)
 _log_fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
+_log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
 
 logging.basicConfig(level=_log_level, format=_log_fmt)
 
@@ -36,11 +35,11 @@ logger = logging.getLogger(__name__)
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-DOMAIN = os.environ.get("DOMAIN", "https://your-app.koyeb.app")
-BOT_OWNER = int(os.environ.get("BOT_OWNER", 0))
+API_ID = config.API_ID
+API_HASH = config.API_HASH
+BOT_TOKEN = config.BOT_TOKEN
+DOMAIN = config.DOMAIN
+BOT_OWNER = config.BOT_OWNER
 
 TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -76,12 +75,15 @@ async def _http_post(endpoint: str, payload: dict) -> dict:
         return {}
 
 
-async def http_send(chat_id: int, text: str) -> dict:
-    result = await _http_post("sendMessage", {
+async def http_send(chat_id: int, text: str, reply_markup=None) -> dict:
+    payload = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
-    })
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    result = await _http_post("sendMessage", payload)
     return result.get("result", {})
 
 
@@ -111,7 +113,7 @@ class BotMessage:
         self.text = data.get("text", "")
 
     async def reply_text(self, text: str, parse_mode=None, **kwargs) -> "BotMessage":
-        result = await http_send(self._chat_id, text)
+        result = await http_send(self._chat_id, text, kwargs.get("reply_markup"))
         fake = BotMessage.__new__(BotMessage)
         fake._chat_id = self._chat_id
         fake._message_id = result.get("message_id", 0)
@@ -153,9 +155,23 @@ async def safe_disconnect(client: Client) -> None:
 
 async def _send_safe(message: BotMessage, text: str, **kwargs) -> None:
     try:
-        await message.reply_text(text)
+        await message.reply_text(text, **kwargs)
     except Exception as e:
         logger.warning("Failed to send message: %s", e)
+
+
+def _dashboard_link_text(url: str) -> str:
+    escaped_url = html.escape(url, quote=True)
+    return f'<a href="{escaped_url}">Open dashboard</a>\n<code>{html.escape(url)}</code>'
+
+
+def _copy_dashboard_link_markup(url: str) -> dict:
+    return {
+        "inline_keyboard": [[{
+            "text": "Copy dashboard link",
+            "copy_text": {"text": url},
+        }]]
+    }
 
 
 # ─── /start ──────────────────────────────────────────────────────────────────
@@ -248,7 +264,8 @@ async def regen_handler(message: BotMessage):
             message,
             "🔄 <b>New dashboard link generated!</b>\n\n"
             "Your old link has been invalidated.\n\n"
-            f"🔗 <b>New Dashboard Link:</b>\n<code>{dashboard_url}</code>",
+            f"🔗 <b>New Dashboard Link:</b>\n{_dashboard_link_text(dashboard_url)}",
+            reply_markup=_copy_dashboard_link_markup(dashboard_url),
         )
     except Exception as e:
         logger.error("Error in /regen handler for user_id=%s: %s", user_id, e)
@@ -281,7 +298,8 @@ async def status_handler(message: BotMessage):
             f"🔖 <b>Username:</b> @{session.get('user_username', 'N/A')}\n"
             f"🕐 <b>Created:</b> {created_str}\n"
             f"🕑 <b>Last Accessed:</b> {last_str}\n\n"
-            f"🔗 <b>Dashboard Link:</b>\n<code>{dashboard_url}</code>",
+            f"🔗 <b>Dashboard Link:</b>\n{_dashboard_link_text(dashboard_url)}",
+            reply_markup=_copy_dashboard_link_markup(dashboard_url),
         )
     except Exception as e:
         logger.error("Error in /status handler for user_id=%s: %s", user_id, e)
@@ -536,9 +554,10 @@ async def handle_successful_connection(message: BotMessage, user_id: int):
             await _send_safe(
                 message,
                 "⚠️ <b>You already have an active session.</b>\n\n"
-                f"Existing dashboard: <code>{existing_link}</code>\n\n"
+                f"Existing dashboard: {_dashboard_link_text(existing_link) if existing else '<code>N/A</code>'}\n\n"
                 "Do you want to replace it with the new session?\n"
                 "Reply with <b>yes</b> to replace or <b>no</b> to keep the existing one.",
+                reply_markup=_copy_dashboard_link_markup(existing_link) if existing else None,
             )
         else:
             await _finalize_session(message, user_id)
@@ -575,9 +594,10 @@ async def _finalize_session(message: BotMessage, user_id: int):
             f"👤 <b>Account:</b> {user_info.get('user_name', 'Unknown')}\n"
             f"🔖 <b>Username:</b> @{user_info.get('user_username', 'N/A')}\n\n"
             "🔗 <b>Your Dashboard Link:</b>\n"
-            f"<code>{dashboard_url}</code>\n\n"
+            f"{_dashboard_link_text(dashboard_url)}\n\n"
             "Keep this link private — it provides access to your Telegram account data.\n\n"
             "Use /status to view session info, /regen to refresh the link, or /logout to remove it.",
+            reply_markup=_copy_dashboard_link_markup(dashboard_url),
         )
     except Exception as e:
         logger.error("Error in _finalize_session for user_id=%s: %s", user_id, e)
