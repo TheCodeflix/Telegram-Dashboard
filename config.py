@@ -11,7 +11,7 @@ FLASK_SECRET_KEY = "8526412924"
 SESSION_SECRET = "8526412924"
 FLASK_ENV = "production"
 
-DOMAIN = "https://spindly-specter-975p4p4675jq2pvrj-8080.app.github.dev"
+DOMAIN = "https://telegram-dashboard-eo9o.onrender.com"
 PORT = 8080
 LOG_LEVEL = "INFO"
 SESSION_MAX_AGE_HOURS = 0
