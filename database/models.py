@@ -124,3 +124,12 @@ def delete_user_session(user_id):
     if deleted:
         logger.info("Deleted user session for user_id=%s", user_id)
     return deleted
+
+
+def delete_user_session_by_unique_id(unique_id):
+    collection = get_collection(USER_SESSIONS_COLLECTION)
+    result = collection.delete_one({"unique_id": unique_id})
+    deleted = result.deleted_count > 0
+    if deleted:
+        logger.info("Deleted user session mapping for unique_id=%s", unique_id)
+    return deleted

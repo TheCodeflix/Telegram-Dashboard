@@ -7,6 +7,14 @@ import urllib.parse
 import json
 from types import SimpleNamespace
 import config
+
+try:
+    loop = asyncio.get_event_loop()
+    if loop.is_closed():
+        asyncio.set_event_loop(asyncio.new_event_loop())
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 from pyrogram import Client
 from pyrogram.errors import (
     SessionPasswordNeeded,
@@ -145,6 +153,27 @@ def clear_user(user_id: int) -> None:
         asyncio.create_task(safe_disconnect(temp_client))
 
 
+def _get_active_session(user_id: int):
+    from database import models
+
+    mapping = models.get_user_session(user_id)
+    if mapping:
+        session = models.get_session_by_unique_id(mapping.get("unique_id"))
+        if session:
+            return session
+    return models.get_session_by_user_id(user_id)
+
+
+def _delete_active_session(user_id: int):
+    from database import models
+
+    session = _get_active_session(user_id)
+    if session:
+        models.delete_session_by_unique_id(session["unique_id"])
+    models.delete_user_session(user_id)
+    return session
+
+
 async def safe_disconnect(client: Client) -> None:
     try:
         if client.is_connected:
@@ -215,14 +244,14 @@ async def cancel_handler(message: BotMessage):
 # ─── /logout ─────────────────────────────────────────────────────────────────
 
 async def logout_handler(message: BotMessage):
-    from database import models
     user_id = message.from_user.id
     logger.info("/logout from user_id=%s", user_id)
     try:
-        if models.user_has_active_session(user_id):
-            models.delete_session_by_user_id(user_id)
-            models.delete_user_session(user_id)
-            await _send_safe(message, "✅ Logged out successfully. Your dashboard link has been invalidated.")
+        if _delete_active_session(user_id):
+            await _send_safe(
+                message,
+                "✅ Dashboard session removed. Your Telegram account remains active in other apps and devices.",
+            )
         else:
             await _send_safe(message, "❌ You don't have any active session.")
     except Exception as e:
@@ -238,17 +267,12 @@ async def regen_handler(message: BotMessage):
     user_id = message.from_user.id
     logger.info("/regen from user_id=%s", user_id)
     try:
-        if not models.user_has_active_session(user_id):
+        existing = _get_active_session(user_id)
+        if not existing:
             await _send_safe(message, "❌ You don't have an active session. Use /start to create one.")
             return
 
-        existing = models.get_session_by_user_id(user_id)
-        if not existing:
-            await _send_safe(message, "❌ Session data not found. Use /start to create one.")
-            return
-
         new_link = generate_unique_link()
-        models.delete_session_by_user_id(user_id)
         models.create_session(
             unique_id=new_link,
             session_string=existing["session_string"],
@@ -257,6 +281,7 @@ async def regen_handler(message: BotMessage):
             user_username=existing["user_username"],
         )
         models.create_user_session(user_id, new_link)
+        models.delete_session_by_unique_id(existing["unique_id"])
 
         dashboard_url = f"{DOMAIN}/dashboard/{new_link}"
         logger.info("Regenerated link for user_id=%s new_link=%s", user_id, new_link)
@@ -275,11 +300,10 @@ async def regen_handler(message: BotMessage):
 # ─── /status ─────────────────────────────────────────────────────────────────
 
 async def status_handler(message: BotMessage):
-    from database import models
     user_id = message.from_user.id
     logger.info("/status from user_id=%s", user_id)
     try:
-        session = models.get_session_by_user_id(user_id)
+        session = _get_active_session(user_id)
         if not session:
             await _send_safe(message, "❌ No active session found.\n\nUse /start to create one.")
             return
@@ -295,7 +319,7 @@ async def status_handler(message: BotMessage):
             message,
             "📊 <b>Session Status</b>\n\n"
             f"👤 <b>Name:</b> {session.get('user_name', 'N/A')}\n"
-            f"🔖 <b>Username:</b> @{session.get('user_username', 'N/A')}\n"
+            f"🔖 <b>Username:</b> @{session.get('user_username') or 'N/A'}\n"
             f"🕐 <b>Created:</b> {created_str}\n"
             f"🕑 <b>Last Accessed:</b> {last_str}\n\n"
             f"🔗 <b>Dashboard Link:</b>\n{_dashboard_link_text(dashboard_url)}",
@@ -518,14 +542,12 @@ async def handle_2fa_input(message: BotMessage):
 # ─── Replace Confirm Handler ─────────────────────────────────────────────────
 
 async def handle_replace_confirm(message: BotMessage):
-    from database import models
     user_id = message.from_user.id
     response = message.text.strip().lower()
 
     try:
         if response in ("yes", "y"):
-            models.delete_session_by_user_id(user_id)
-            models.delete_user_session(user_id)
+            _delete_active_session(user_id)
             logger.info("User %s confirmed session replacement", user_id)
             await _finalize_session(message, user_id)
         elif response in ("no", "n"):
@@ -545,11 +567,10 @@ async def handle_replace_confirm(message: BotMessage):
 # ─── Successful Connection Handler ────────────────────────────────────────────
 
 async def handle_successful_connection(message: BotMessage, user_id: int):
-    from database import models
     try:
-        if models.user_has_active_session(user_id):
+        existing = _get_active_session(user_id)
+        if existing:
             set_state(user_id, WAITING_FOR_REPLACE_CONFIRM)
-            existing = models.get_session_by_user_id(user_id)
             existing_link = f"{DOMAIN}/dashboard/{existing['unique_id']}" if existing else "N/A"
             await _send_safe(
                 message,

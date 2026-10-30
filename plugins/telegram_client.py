@@ -65,25 +65,41 @@ async def _get_user_info(client: Client) -> dict:
         "phone": me.phone_number or "",
         "is_premium": getattr(me, "is_premium", False),
         "dc_id": getattr(me, "dc_id", None),
+        "photo": await _get_chat_photo(client, me.id),
     }
 
 
 @_retry_flood
 async def _get_all_dialogs(client: Client, limit: int = 200) -> list:
     dialogs = []
+    me = await client.get_me()
     try:
         async for dialog in client.get_dialogs(limit=limit):
             chat = dialog.chat
             try:
                 chat_type = _resolve_chat_type(chat)
+                role = "member"
+                if chat_type in ("channel", "supergroup", "group"):
+                    try:
+                        member = await client.get_chat_member(chat.id, me.id)
+                        status = str(member.status).split(".")[-1].upper()
+                        if status == "OWNER":
+                            role = "owner"
+                        elif status == "ADMINISTRATOR":
+                            role = "admin"
+                    except Exception as e:
+                        logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
                 entry = {
                     "id": chat.id,
                     "title": getattr(chat, "title", None) or _full_name(chat),
                     "username": getattr(chat, "username", None) or "",
                     "type": chat_type,
+                    "role": role,
                     "member_count": getattr(chat, "members_count", None),
                     "is_verified": getattr(chat, "is_verified", False),
                     "is_scam": getattr(chat, "is_scam", False),
+                    "invite_link": getattr(chat, "invite_link", None) or "",
+                    "photo": await _get_chat_photo(client, chat.id),
                 }
                 dialogs.append(entry)
             except Exception as e:

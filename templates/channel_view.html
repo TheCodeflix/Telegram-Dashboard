@@ -434,3 +434,12 @@
 </div>
 
 {% endblock %}
+
+    {% block extra_scripts %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabLink = document.querySelector(`[href="${window.location.hash}"][data-bs-toggle="tab"]`);
+        if (tabLink) bootstrap.Tab.getOrCreateInstance(tabLink).show();
+    });
+    </script>
+    {% endblock %}

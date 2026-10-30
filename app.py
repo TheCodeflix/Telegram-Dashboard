@@ -248,8 +248,12 @@ def dashboard(unique_link):
         except Exception as e:
             logger.error("Failed to fetch dialogs for unique_link=%s: %s", unique_link, e)
             dialogs_data = {
-                "sorted": {"channels": [], "groups": [], "contacts": [], "bots": []},
-                "counts": {"channels": 0, "groups": 0, "contacts": 0, "bots": 0},
+                "sorted": {
+                    "channels": [], "groups": [], "contacts": [], "bots": [],
+                    "access_categories": {"owner": [], "admin": [], "member": []},
+                },
+                "counts": {"channels": 0, "groups": 0, "contacts": 0, "bots": 0,
+                           "owner": 0, "admin": 0, "member": 0},
             }
 
     return render_template(
@@ -341,18 +345,16 @@ def web_logout(unique_link):
     if not session:
         return render_template("404.html"), 404
 
-    user_id = session.get("user_id")
     models.delete_session_by_unique_id(unique_link)
-    if user_id:
-        models.delete_user_session(user_id)
+    models.delete_user_session_by_unique_id(unique_link)
 
     cache_bust(f"user_info:{unique_link}")
     cache_bust(f"dialogs:{unique_link}")
 
-    logger.info("Web logout: unique_link=%s user_id=%s", unique_link, user_id)
+    logger.info("Web logout: unique_link=%s", unique_link)
     return render_template(
         "error.html",
-        message="Logged out successfully. This dashboard link has been invalidated.",
+        message="Dashboard session removed. Your Telegram account remains active in other apps and devices.",
         title="Logged Out"
     )
 

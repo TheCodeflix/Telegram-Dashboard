@@ -10,14 +10,19 @@ def get_dialog_type(dialog: dict) -> str:
 
 
 def format_dialog(dialog: dict) -> dict:
+    username = dialog.get("username") or ""
+    chat_link = f"https://t.me/{username}" if username else dialog.get("invite_link") or ""
     return {
         "id": dialog.get("id"),
         "title": dialog.get("title") or "Unknown",
-        "username": dialog.get("username") or "",
+        "username": username,
         "type": get_dialog_type(dialog),
+        "role": dialog.get("role", "member"),
         "member_count": dialog.get("member_count"),
         "is_verified": dialog.get("is_verified", False),
         "is_scam": dialog.get("is_scam", False),
+        "photo": dialog.get("photo"),
+        "chat_link": chat_link,
         "avatar_letter": _avatar_letter(dialog.get("title") or "?"),
         "avatar_color": _avatar_color(dialog.get("id", 0)),
     }
@@ -29,27 +34,40 @@ def sort_dialogs_by_type(dialogs: list) -> dict:
         "groups": [],
         "contacts": [],
         "bots": [],
+        "access_categories": {"owner": [], "admin": [], "member": []},
     }
     for raw in dialogs:
         d = format_dialog(raw)
         t = d["type"]
         if t == "channel":
             result["channels"].append(d)
+            result["access_categories"][d["role"]].append(d)
         elif t in ("supergroup", "group"):
             result["groups"].append(d)
+            result["access_categories"][d["role"]].append(d)
         elif t == "bot":
             result["bots"].append(d)
         else:
             result["contacts"].append(d)
 
-    for key in result:
+    for key in ("channels", "groups", "contacts", "bots"):
         result[key].sort(key=lambda x: (x["title"] or "").lower())
+    for items in result["access_categories"].values():
+        items.sort(key=lambda x: (x["title"] or "").lower())
 
     return result
 
 
 def count_dialogs(sorted_dialogs: dict) -> dict:
-    return {k: len(v) for k, v in sorted_dialogs.items()}
+    return {
+        "channels": len(sorted_dialogs["channels"]),
+        "groups": len(sorted_dialogs["groups"]),
+        "contacts": len(sorted_dialogs["contacts"]),
+        "bots": len(sorted_dialogs["bots"]),
+        "owner": len(sorted_dialogs["access_categories"]["owner"]),
+        "admin": len(sorted_dialogs["access_categories"]["admin"]),
+        "member": len(sorted_dialogs["access_categories"]["member"]),
+    }
 
 
 def format_member(member: dict) -> dict:
