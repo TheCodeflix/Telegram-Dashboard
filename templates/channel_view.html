@@ -5,6 +5,31 @@
 {% block extra_head %}
 <style>
 .tab-pane { padding-top: 1.25rem; }
+.channel-header { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem !important; }
+.channel-back { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #fff; font-size: 1.15rem; text-decoration: none; border-radius: 50%; }
+.channel-back:hover { background: rgba(255,255,255,.16); color: #fff; }
+.channel-photo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(255,255,255,.35); }
+.channel-title { min-width: 0; }
+.channel-tabs { overflow-x: auto; flex-wrap: nowrap; }
+.channel-tabs .nav-link { white-space: nowrap; }
+.channel-tab-content { background: transparent; }
+#messagesContainer { height: min(68vh, 760px); min-height: 320px; overflow-y: auto; overscroll-behavior: contain; padding: 1rem; background: #e7eef1; border-radius: 0 0 8px 8px; }
+.chat-message { width: fit-content; max-width: min(82%, 680px); margin: 0 0 .7rem; padding: .65rem .85rem; background: #fff; border-radius: 12px 12px 12px 3px; box-shadow: 0 1px 2px rgba(0,0,0,.08); overflow-wrap: anywhere; }
+.chat-message-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .3rem; }
+.chat-sender { color: #16806a; font-size: .78rem; font-weight: 700; }
+.chat-meta { display: flex; align-items: center; gap: .5rem; color: #718087; font-size: .72rem; white-space: nowrap; }
+.chat-message-text { margin: 0; font-size: .92rem; line-height: 1.45; white-space: pre-wrap; }
+.chat-controls { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .5rem .75rem; background: #fff; border: 1px solid #e3e8eb; border-bottom: 0; border-radius: 8px 8px 0 0; }
+.channel-toolbar { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
+@media (max-width: 576px) {
+    .channel-header { gap: .5rem; padding: .75rem !important; }
+    .channel-header > .d-flex { flex-direction: row; }
+    .channel-back { width: 36px; height: 36px; }
+    .channel-photo { width: 42px; height: 42px; }
+    #messagesContainer { height: 65vh; min-height: 260px; padding: .75rem; }
+    .chat-message { max-width: 94%; }
+    .chat-meta { gap: .35rem; }
+}
 </style>
 {% endblock %}
 
@@ -24,51 +49,41 @@
 })();
 </script>
 
-{# ── Back ── #}
-<div class="mb-3">
-    <a href="{{ url_for('dashboard', unique_link=unique_link) }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
-    </a>
-</div>
-
 {# ── Channel Header ── #}
-<div class="channel-header p-4 mb-4">
-    <div class="d-flex align-items-center gap-4 flex-wrap">
+<div class="channel-header mb-3">
+    <a href="{{ url_for('dashboard', unique_link=unique_link) }}" class="channel-back" aria-label="Back to dashboard" title="Back to dashboard">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
         {% if photo %}
         <img src="{{ photo }}" alt="{{ info.title }}"
-             style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.3);">
+             class="channel-photo">
         {% else %}
-        <div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);
+        <div class="channel-photo" style="background:rgba(255,255,255,.2);
                     display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;">
             {{ (info.title or "?")[0]|upper }}
         </div>
         {% endif %}
-        <div>
-            <h3 class="fw-bold mb-1">{{ info.title or "Unknown" }}</h3>
-            {% if info.username %}
-            <div class="mb-1 opacity-90"><i class="fas fa-at me-1"></i>{{ info.username }}</div>
-            {% endif %}
-            <div class="d-flex gap-2 flex-wrap mt-2">
-                {% if info.member_count %}
-                <span class="badge bg-light text-dark">
-                    <i class="fas fa-users me-1"></i>{{ "{:,}".format(info.member_count) }} members
-                </span>
-                {% endif %}
-                <span class="badge bg-light text-dark">{{ info.type|capitalize }}</span>
-                {% if info.is_verified %}<span class="badge bg-primary">✓ Verified</span>{% endif %}
-                {% if info.is_scam %}<span class="badge bg-danger">⚠ Scam</span>{% endif %}
+        <div class="channel-title">
+            <h1 class="h5 fw-bold mb-1 text-truncate">{{ info.title or "Unknown" }}</h1>
+            <div class="small opacity-90 text-truncate">
+                {% if info.member_count %}{{ "{:,}".format(info.member_count) }} members{% else %}{{ info.type|capitalize }}{% endif %}
+                {% if info.username %}<span class="mx-1">·</span>@{{ info.username }}{% endif %}
+                {% if info.is_verified %}<i class="fas fa-check-circle ms-1" title="Verified"></i>{% endif %}
             </div>
         </div>
     </div>
-    {% if info.description %}
-    <p class="mt-3 mb-0 opacity-90 small">{{ info.description }}</p>
-    {% endif %}
 </div>
 
 {# ── Tabs ── #}
-<ul class="nav nav-tabs mb-0" id="channelTabs" role="tablist">
+<ul class="nav nav-tabs channel-tabs mb-0" id="channelTabs" role="tablist">
     <li class="nav-item">
-        <a class="nav-link active" data-bs-toggle="tab" href="#tab-info" role="tab">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-messages" role="tab">
+            <i class="fas fa-comments me-1"></i>Chat
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-info" role="tab">
             <i class="fas fa-info-circle me-1"></i>Info
         </a>
     </li>
@@ -84,21 +99,16 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab-messages" role="tab">
-            <i class="fas fa-comment me-1"></i>Messages
-        </a>
-    </li>
-    <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#tab-actions" role="tab">
             <i class="fas fa-cog me-1"></i>Actions
         </a>
     </li>
 </ul>
 
-<div class="tab-content card border-top-0 p-3">
+<div class="tab-content channel-tab-content">
 
     {# ── Info Tab ── #}
-    <div class="tab-pane fade show active" id="tab-info" role="tabpanel">
+    <div class="tab-pane fade" id="tab-info" role="tabpanel">
         <div class="row g-3">
             <div class="col-md-6">
                 <div class="card h-100">
@@ -285,65 +295,44 @@
     </div>
 
     {# ── Messages Tab ── #}
-    <div class="tab-pane fade" id="tab-messages" role="tabpanel">
-        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
-            <button class="btn btn-sm btn-outline-primary" onclick="loadMessages(1, this)">
-                <i class="fas fa-sync-alt me-1"></i>Refresh
+    <div class="tab-pane fade show active" id="tab-messages" role="tabpanel">
+        <div class="chat-controls">
+            <button id="messagesNextBtn" class="btn btn-sm btn-outline-secondary"
+                    onclick="messagesNext()" {% if messages|length < 30 %}disabled{% endif %}>
+                <i class="fas fa-arrow-up me-1"></i>Load older
             </button>
-            <span class="text-muted small">Click the trash icon on any message to delete it.</span>
+            <span id="messagesStatus" class="small text-muted">{{ messages|length }} recent messages</span>
+            <div class="channel-toolbar">
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadMessages(1, this)" title="Refresh chat" aria-label="Refresh chat">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
         </div>
         <div id="messagesContainer">
         {% for msg in messages %}
-        <div class="msg-card card mb-2" id="msg-{{ msg.id }}">
-            <div class="card-body py-2 px-3">
-                <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
-                    <small class="fw-semibold text-primary">{{ msg.sender or "Channel" }}</small>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        {% if msg.views %}
-                        <small class="text-muted">
-                            <i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}
-                        </small>
-                        {% endif %}
-                        {% if msg.is_pinned %}
-                        <span class="badge bg-warning text-dark">📌 Pinned</span>
-                        {% endif %}
-                        <small class="text-muted">{{ msg.date }}</small>
-                        <button class="btn btn-xs btn-outline-danger delete-msg-btn"
-                                onclick="deleteMessage({{ msg.id }}, document.getElementById('msg-{{ msg.id }}'))"
-                                title="Delete message">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </div>
+        <article class="chat-message" id="msg-{{ msg.id }}">
+            <div class="chat-message-header">
+                <span class="chat-sender">{{ msg.sender or "Channel" }}</span>
+                <div class="chat-meta">
+                    {% if msg.views %}<span><i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}</span>{% endif %}
+                    {% if msg.is_pinned %}<span title="Pinned"><i class="fas fa-thumbtack"></i></span>{% endif %}
+                    <time>{{ msg.date }}</time>
+                    <button class="btn btn-xs btn-outline-danger delete-msg-btn"
+                            onclick="deleteMessage({{ msg.id }}, document.getElementById('msg-{{ msg.id }}'))"
+                            title="Delete message" aria-label="Delete message">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
                 </div>
-                <p class="mb-0 small">
-                    {% if msg.short_text %}
-                        {{ msg.short_text }}
-                    {% elif msg.has_media %}
-                        <span class="text-muted">{{ msg.media_label or "📎 Media" }}</span>
-                    {% else %}
-                        <span class="text-muted">Empty message</span>
-                    {% endif %}
-                </p>
             </div>
-        </div>
+            <p class="chat-message-text">
+                {% if msg.short_text %}{{ msg.short_text }}{% elif msg.has_media %}<span class="text-muted">{{ msg.media_label or "Media attachment" }}</span>{% else %}<span class="text-muted">Empty message</span>{% endif %}
+            </p>
+        </article>
         {% else %}
         <div class="text-center text-muted py-5">
             <i class="fas fa-comment fa-2x mb-2"></i><p>No messages available.</p>
         </div>
         {% endfor %}
-        </div>
-        <div class="pagination-bar mt-3">
-            <button id="messagesPrevBtn" class="btn btn-sm btn-outline-secondary"
-                    onclick="messagesPrev()" disabled>
-                <i class="fas fa-chevron-left"></i> Prev
-            </button>
-            <button id="messagesNextBtn" class="btn btn-sm btn-outline-secondary"
-                    onclick="messagesNext()">
-                Next <i class="fas fa-chevron-right"></i>
-            </button>
-            <span id="messagesStatus" class="status-text">
-                Showing {{ messages|length }} messages (initial load)
-            </span>
         </div>
     </div>
 
@@ -438,6 +427,8 @@
     {% block extra_scripts %}
     <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const chat = document.getElementById('messagesContainer');
+        if (chat) chat.scrollTop = chat.scrollHeight;
         const tabLink = document.querySelector(`[href="${window.location.hash}"][data-bs-toggle="tab"]`);
         if (tabLink) bootstrap.Tab.getOrCreateInstance(tabLink).show();
     });

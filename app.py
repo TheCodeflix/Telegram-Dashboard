@@ -268,7 +268,7 @@ def dashboard(unique_link):
 
 # ─── Channel View ─────────────────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>", methods=["GET"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>", methods=["GET"])
 @rate_limit
 def channel_view(unique_link, channel_id):
     from database import models
@@ -361,7 +361,7 @@ def web_logout(unique_link):
 
 # ─── AJAX: Generate invite link ───────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/invite", methods=["POST"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/invite", methods=["POST"])
 @rate_limit
 def channel_invite(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)
@@ -378,7 +378,7 @@ def channel_invite(unique_link, channel_id):
 
 # ─── AJAX: Revoke invite link ─────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/revoke_invite", methods=["POST"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/revoke_invite", methods=["POST"])
 @rate_limit
 def channel_revoke_invite(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)
@@ -400,7 +400,7 @@ def channel_revoke_invite(unique_link, channel_id):
 
 # ─── AJAX: Transfer ownership ─────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/transfer", methods=["POST"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/transfer", methods=["POST"])
 @rate_limit
 def channel_transfer(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)
@@ -447,7 +447,7 @@ def channel_transfer(unique_link, channel_id):
 
 # ─── AJAX: Delete message ─────────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/delete_message", methods=["POST"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/delete_message", methods=["POST"])
 @rate_limit
 def channel_delete_message(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)
@@ -472,7 +472,7 @@ def channel_delete_message(unique_link, channel_id):
 
 # ─── AJAX: Members pagination ─────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/members", methods=["GET"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/members", methods=["GET"])
 @rate_limit
 def channel_members_ajax(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)
@@ -503,7 +503,7 @@ def channel_members_ajax(unique_link, channel_id):
 
 # ─── AJAX: Messages pagination ────────────────────────────────────────────────
 
-@app.route("/channel/<unique_link>/<int:channel_id>/messages", methods=["GET"])
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/messages", methods=["GET"])
 @rate_limit
 def channel_messages_ajax(unique_link, channel_id):
     session, err = _get_session_or_fail(unique_link)

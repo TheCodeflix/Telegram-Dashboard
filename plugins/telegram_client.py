@@ -197,6 +197,7 @@ async def _get_channel_messages(client: Client, channel_id: int,
             })
     except Exception as e:
         logger.warning("Error fetching messages for %s: %s", channel_id, e)
+    messages.reverse()
     return messages
 
 

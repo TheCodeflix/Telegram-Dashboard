@@ -21,6 +21,9 @@
 .search-box { border-radius: 30px; padding-left: 1rem; }
 .dialog-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .dialog-actions .dropdown-menu { min-width: 190px; }
+.dialog-item { position: relative; }
+.dialog-item:focus-within { z-index: 20; }
+.dialog-actions .dropdown-menu { z-index: 1080; }
 .access-section { border-top: 1px solid #dee2e6; padding-top: 1rem; }
 </style>
 {% endblock %}
@@ -138,9 +141,9 @@
                             {% endif %}
                         </small>
                     </div>
-                    <div class="dropdown dialog-actions flex-shrink-0">
+                    <div class="dropup dialog-actions flex-shrink-0">
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ item.title }}" title="Chat actions">
-                            <i class="fas fa-ellipsis-vertical"></i>
+                            <i class="fas fa-bars"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.id) }}"><i class="fas fa-comments me-2"></i>Open chat and data</a></li>

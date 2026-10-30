@@ -366,6 +366,33 @@ function membersNext() { loadMembers(membersPage + 1); }
 let messagesPage = 1;
 const messagesLimit = 30;
 
+function renderChatMessage(msg) {
+    const messageId = Number(msg.id) || 0;
+    const text = msg.short_text
+        ? escHtml(msg.short_text)
+        : (msg.media_label
+            ? `<span class="text-muted">${escHtml(msg.media_label)}</span>`
+            : '<span class="text-muted">Empty message</span>');
+
+    return `
+        <article class="chat-message" id="msg-${messageId}">
+            <div class="chat-message-header">
+                <span class="chat-sender">${escHtml(msg.sender || 'Channel')}</span>
+                <div class="chat-meta">
+                    ${msg.views ? `<span><i class="fas fa-eye me-1"></i>${fmtNum(msg.views)}</span>` : ''}
+                    ${msg.is_pinned ? '<span title="Pinned"><i class="fas fa-thumbtack"></i></span>' : ''}
+                    <time>${escHtml(msg.date)}</time>
+                    <button class="btn btn-xs btn-outline-danger delete-msg-btn"
+                            onclick="deleteMessage(${messageId}, document.getElementById('msg-${messageId}'))"
+                            title="Delete message" aria-label="Delete message">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="chat-message-text">${text}</p>
+        </article>`;
+}
+
 async function loadMessages(page, btnEl) {
     if (btnEl) setLoading(btnEl, true);
     const container = document.getElementById('messagesContainer');
@@ -378,39 +405,22 @@ async function loadMessages(page, btnEl) {
         const data = await res.json();
         if (!data.success) { showToast('Error: ' + data.error, 'danger'); return; }
 
-        container.innerHTML = data.messages.length
-            ? data.messages.map(msg => `
-                <div class="msg-card card mb-2" id="msg-${msg.id}">
-                    <div class="card-body py-2 px-3">
-                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
-                            <small class="fw-semibold text-primary">${escHtml(msg.sender || 'Channel')}</small>
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                ${msg.views ? `<small class="text-muted"><i class="fas fa-eye me-1"></i>${fmtNum(msg.views)}</small>` : ''}
-                                ${msg.is_pinned ? '<span class="badge bg-warning text-dark">📌 Pinned</span>' : ''}
-                                <small class="text-muted">${escHtml(msg.date)}</small>
-                                <button class="btn btn-xs btn-outline-danger delete-msg-btn"
-                                        onclick="deleteMessage(${msg.id}, document.getElementById('msg-${msg.id}'))">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <p class="mb-0 small">
-                            ${msg.short_text
-                                ? escHtml(msg.short_text)
-                                : (msg.media_label
-                                    ? `<span class="text-muted">${escHtml(msg.media_label)}</span>`
-                                    : '<span class="text-muted">Empty message</span>')}
-                        </p>
-                    </div>
-                </div>`).join('')
-            : '<div class="text-center text-muted py-4"><i class="fas fa-comment fa-2x mb-2"></i><p>No messages found.</p></div>';
+        const renderedMessages = data.messages.map(renderChatMessage).join('');
+        if (page > messagesPage && renderedMessages) {
+            const previousHeight = container.scrollHeight;
+            const previousTop = container.scrollTop;
+            container.insertAdjacentHTML('afterbegin', renderedMessages);
+            container.scrollTop = previousTop + container.scrollHeight - previousHeight;
+        } else {
+            container.innerHTML = renderedMessages
+                || '<div class="text-center text-muted py-4"><i class="fas fa-comment fa-2x mb-2"></i><p>No messages found.</p></div>';
+            if (page === 1) container.scrollTop = container.scrollHeight;
+        }
 
         messagesPage = page;
-        if (status) status.textContent = `Page ${page} · Showing ${data.messages.length} messages`;
+        if (status) status.textContent = `${container.querySelectorAll('.chat-message').length} messages loaded`;
 
-        const prevBtn = document.getElementById('messagesPrevBtn');
         const nextBtn = document.getElementById('messagesNextBtn');
-        if (prevBtn) prevBtn.disabled = page <= 1;
         if (nextBtn) nextBtn.disabled = data.messages.length < messagesLimit;
     } catch (e) {
         showToast('Failed to load messages: ' + e.message, 'danger');
@@ -419,7 +429,6 @@ async function loadMessages(page, btnEl) {
     }
 }
 
-function messagesPrev() { if (messagesPage > 1) loadMessages(messagesPage - 1); }
 function messagesNext() { loadMessages(messagesPage + 1); }
 
 // ─── Member search filter ─────────────────────────────────────────────────────
