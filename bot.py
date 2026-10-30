@@ -366,10 +366,31 @@ async def text_handler(message: BotMessage):
 
 # ─── Session String Handler ───────────────────────────────────────────────────
 
+def _extract_session_string(text: str) -> str:
+    content = text.replace("\u00a0", " ").strip()
+    decoder = json.JSONDecoder()
+
+    for offset, char in enumerate(content):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(content[offset:])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for key in ("session", "session_string"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return content
+
+
 async def handle_session_input(message: BotMessage):
     from plugins.session_manager import validate_session_string
     user_id = message.from_user.id
-    session_string = message.text.strip()
+    session_string = _extract_session_string(message.text)
 
     if not validate_session_string(session_string):
         await _send_safe(
