@@ -191,7 +191,7 @@ async def _send_safe(message: BotMessage, text: str, **kwargs) -> None:
 
 def _dashboard_link_text(url: str) -> str:
     escaped_url = html.escape(url, quote=True)
-    return f'<a href="{escaped_url}">Open dashboard</a>\n<code>{html.escape(url)}</code>'
+    return f'<a href="{escaped_url}">{escaped_url}</a>'
 
 
 def _copy_dashboard_link_markup(url: str) -> dict:
