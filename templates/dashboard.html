@@ -7,17 +7,12 @@
 <section class="dashboard-hero mb-4">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div class="d-flex align-items-center gap-3">
-                {% if user_info.photo %}
-                <img class="avatar-circle" src="{{ user_info.photo }}" alt="{{ user_info.user_name }}" style="object-fit:cover;"
-                     onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                <div class="avatar-circle" style="font-size:1.4rem;" hidden>
+                <div class="avatar-circle" data-photo-fallback style="font-size:1.4rem;">
                     {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
                 </div>
-                {% else %}
-                <div class="avatar-circle" style="font-size:1.4rem;">
-                    {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
-                </div>
-                {% endif %}
+                <img class="avatar-circle" data-photo-chat-id="{{ user_info.user_id }}"
+                     data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
+                     alt="{{ user_info.user_name }}" style="object-fit:cover;" hidden>
                 <div>
                     <h5 class="mb-0 fw-bold">{{ user_info.user_name or "Unknown" }}</h5>
                     <small class="text-muted">
@@ -96,13 +91,10 @@
         <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
             <div class="card dialog-card h-100">
                 <div class="card-body d-flex align-items-center gap-3 py-3">
-                    {% if item.photo %}
-                    <img class="dialog-avatar" src="{{ item.photo }}" alt="{{ item.title }}" loading="lazy"
-                         onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                    <div class="avatar-sm" style="background:{{ item.avatar_color }};" hidden>{{ item.avatar_letter }}</div>
-                    {% else %}
-                    <div class="avatar-sm" style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
-                    {% endif %}
+                    <div class="avatar-sm" data-photo-fallback style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
+                    <img class="dialog-avatar" data-photo-chat-id="{{ item.chat_id }}"
+                         data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
+                         alt="{{ item.title }}" hidden>
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="fw-semibold text-truncate">
                             <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">
@@ -145,10 +137,10 @@
         <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
             <div class="card dialog-card h-100">
                 <div class="card-body d-flex align-items-center gap-3 py-3">
-                    {% if item.photo %}<img class="dialog-avatar" src="{{ item.photo }}" alt="{{ item.title }}" loading="lazy"
-                                            onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                    <div class="avatar-sm" style="background:{{ item.avatar_color }};" hidden>{{ item.avatar_letter }}</div>
-                    {% else %}<div class="avatar-sm" style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>{% endif %}
+                    <div class="avatar-sm" data-photo-fallback style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
+                    <img class="dialog-avatar" data-photo-chat-id="{{ item.chat_id }}"
+                         data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
+                         alt="{{ item.title }}" hidden>
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="fw-semibold text-truncate">
                             <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">{{ item.title }}</a>

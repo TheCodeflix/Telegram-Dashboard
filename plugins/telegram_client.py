@@ -54,8 +54,9 @@ def create_client(session_string: str) -> Client:
 # ─── Async operations ─────────────────────────────────────────────────────────
 
 @_retry_flood
-async def _get_user_info(client: Client) -> dict:
-    me = await client.get_me()
+async def _get_user_info(client: Client, me=None) -> dict:
+    if me is None:
+        me = await client.get_me()
     return {
         "user_id": me.id,
         "user_name": f"{me.first_name or ''} {me.last_name or ''}".strip(),
@@ -65,30 +66,35 @@ async def _get_user_info(client: Client) -> dict:
         "phone": me.phone_number or "",
         "is_premium": getattr(me, "is_premium", False),
         "dc_id": getattr(me, "dc_id", None),
-        "photo": await _get_chat_photo(client, me),
+        "photo": None,
     }
 
 
 @_retry_flood
-async def _get_all_dialogs(client: Client, limit: int = 0) -> list:
-    dialogs = []
-    me = await client.get_me()
-    async for dialog in client.get_dialogs(limit=limit):
-        chat = dialog.chat
+async def _get_all_dialogs(client: Client, limit: int = 0, me=None) -> list:
+    if me is None:
+        me = await client.get_me()
+    role_semaphore = asyncio.Semaphore(4)
+    tasks = []
+    entries = []
+
+    async def build_dialog(chat):
         try:
             chat_type = _resolve_chat_type(chat)
-            role = "member"
+            role = "owner" if getattr(chat, "is_creator", False) else "member"
             if chat_type in ("channel", "supergroup", "group"):
-                try:
-                    member = await client.get_chat_member(chat.id, me.id)
-                    status = str(member.status).split(".")[-1].upper()
-                    if status == "OWNER":
-                        role = "owner"
-                    elif status == "ADMINISTRATOR":
-                        role = "admin"
-                except Exception as e:
-                    logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
-            entry = {
+                if role != "owner":
+                    try:
+                        async with role_semaphore:
+                            member = await client.get_chat_member(chat.id, me.id)
+                        status = str(member.status).split(".")[-1].upper()
+                        if status == "OWNER":
+                            role = "owner"
+                        elif status == "ADMINISTRATOR":
+                            role = "admin"
+                    except Exception as e:
+                        logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
+            return {
                 "id": chat.id,
                 "title": getattr(chat, "title", None) or _full_name(chat),
                 "username": getattr(chat, "username", None) or "",
@@ -98,12 +104,20 @@ async def _get_all_dialogs(client: Client, limit: int = 0) -> list:
                 "is_verified": getattr(chat, "is_verified", False),
                 "is_scam": getattr(chat, "is_scam", False),
                 "invite_link": getattr(chat, "invite_link", None) or "",
-                "photo": await _get_chat_photo(client, chat),
+                "photo": None,
             }
-            dialogs.append(entry)
         except Exception as e:
             logger.warning("Skipping dialog %s: %s", getattr(chat, "id", "?"), e)
-    return dialogs
+            return None
+
+    async for dialog in client.get_dialogs(limit=limit):
+        tasks.append(asyncio.create_task(build_dialog(dialog.chat)))
+        if len(tasks) == 4:
+            entries.extend(await asyncio.gather(*tasks))
+            tasks.clear()
+    if tasks:
+        entries.extend(await asyncio.gather(*tasks))
+    return [entry for entry in entries if entry is not None]
 
 
 @_retry_flood
@@ -274,6 +288,28 @@ async def _get_chat_photo(client: Client, chat):
     return None
 
 
+async def _get_chat_photos(client: Client, chat_ids: list[int]) -> dict[int, str]:
+    requested = set(chat_ids)
+    photos = {}
+    me = await client.get_me()
+    if me.id in requested:
+        photo = await _get_chat_photo(client, me)
+        if photo:
+            photos[me.id] = photo
+
+    for_dialogs = client.get_dialogs(limit=0)
+    async for dialog in for_dialogs:
+        chat = dialog.chat
+        if chat.id not in requested or chat.id in photos:
+            continue
+        photo = await _get_chat_photo(client, chat)
+        if photo:
+            photos[chat.id] = photo
+        if len(photos) == len(requested):
+            break
+    return photos
+
+
 async def _get_message_media_data(client: Client, message) -> dict:
     media_type = getattr(message.media, "name", "") if message.media else ""
     media_type = media_type or (str(message.media).split(".")[-1] if message.media else "")
@@ -418,6 +454,16 @@ def get_all_dialogs(session_string: str, limit: int = 0) -> list:
     return run_in_session(session_string, lambda c: _get_all_dialogs(c, limit))
 
 
+def get_dashboard_data(session_string: str) -> tuple[dict, list]:
+    async def _dashboard_data(client):
+        me = await client.get_me()
+        user_info = await _get_user_info(client, me)
+        dialogs = await _get_all_dialogs(client, me=me)
+        return user_info, dialogs
+
+    return run_in_session(session_string, _dashboard_data)
+
+
 def get_channel_info(session_string: str, channel_id: int) -> dict:
     return run_in_session(
         session_string, lambda c: _get_channel_info(c, channel_id), chat_id=channel_id
@@ -523,6 +569,12 @@ def get_chat_photo(session_string: str, chat_id: int):
 
     return run_in_session(
         session_string, _get_photo, chat_id=chat_id
+    )
+
+
+def get_chat_photos(session_string: str, chat_ids: list[int]) -> dict[int, str]:
+    return run_in_session(
+        session_string, lambda client: _get_chat_photos(client, chat_ids)
     )
 
 

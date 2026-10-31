@@ -226,31 +226,21 @@ def dashboard(unique_link):
 
     cache_key = f"user_info:{unique_link}"
     user_info = cache_get(cache_key)
-    if user_info is None:
-        try:
-            user_info = telegram_client.get_user_info(session_string)
-            cache_set(cache_key, user_info)
-        except Exception as e:
-            logger.error("Failed to get user info for unique_link=%s: %s", unique_link, e)
-            return render_template(
-                "500.html",
-                message="Failed to connect to Telegram. Your session may have expired."
-            ), 503
-
     dialogs_key = f"dialogs:{unique_link}"
     dialogs_data = cache_get(dialogs_key)
-    if dialogs_data is None:
+    if user_info is None or dialogs_data is None:
         try:
-            raw_dialogs = telegram_client.get_all_dialogs(session_string)
+            user_info, raw_dialogs = telegram_client.get_dashboard_data(session_string)
             sorted_dialogs = channel_utils.sort_dialogs_by_type(raw_dialogs)
             counts = channel_utils.count_dialogs(sorted_dialogs)
             dialogs_data = {"sorted": sorted_dialogs, "counts": counts}
+            cache_set(cache_key, user_info)
             cache_set(dialogs_key, dialogs_data)
         except Exception as e:
-            logger.error("Failed to fetch dialogs for unique_link=%s: %s", unique_link, e)
+            logger.error("Failed to load dashboard data for unique_link=%s: %s", unique_link, e)
             return render_template(
                 "500.html",
-                message="Could not load your Telegram chats. Please refresh and try again."
+                message="Could not load your Telegram dashboard. Please refresh and try again."
             ), 503
 
     return render_template(
@@ -261,6 +251,52 @@ def dashboard(unique_link):
         unique_link=unique_link,
         domain=DOMAIN,
     )
+
+
+@app.route("/dashboard/<unique_link>/photos", methods=["POST"])
+@rate_limit
+def dashboard_photos(unique_link):
+    from database import models
+
+    payload = request.get_json(silent=True)
+    chat_ids = payload.get("chat_ids") if isinstance(payload, dict) else None
+    if (
+        not isinstance(chat_ids, list)
+        or not chat_ids
+        or len(chat_ids) > 12
+        or any(type(chat_id) is not int for chat_id in chat_ids)
+    ):
+        return jsonify({"success": False, "error": "Provide between 1 and 12 valid chat IDs."}), 400
+
+    session = models.get_session_by_unique_id(unique_link)
+    if not session:
+        return jsonify({"success": False, "error": "Dashboard session not found."}), 404
+
+    photos = {}
+    missing = []
+    for chat_id in dict.fromkeys(chat_ids):
+        cache_key = f"chat_photo:{unique_link}:{chat_id}"
+        cached_photo = cache_get(cache_key)
+        if cached_photo is None:
+            missing.append(chat_id)
+        elif cached_photo:
+            photos[str(chat_id)] = cached_photo
+
+    if missing:
+        try:
+            loaded_photos = telegram_client.get_chat_photos(
+                session["session_string"], missing
+            )
+            for chat_id in missing:
+                photo = loaded_photos.get(chat_id, "")
+                cache_set(f"chat_photo:{unique_link}:{chat_id}", photo)
+                if photo:
+                    photos[str(chat_id)] = photo
+        except Exception as e:
+            logger.error("Failed to load dashboard photos for unique_link=%s: %s", unique_link, e)
+            return jsonify({"success": False, "error": "Could not load chat photos."}), 503
+
+    return jsonify({"success": True, "photos": photos})
 
 
 # ─── Channel View ─────────────────────────────────────────────────────────────

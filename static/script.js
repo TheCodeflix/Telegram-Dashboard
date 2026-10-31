@@ -2,7 +2,91 @@
 
 document.addEventListener('DOMContentLoaded', function () {
     checkHealth();
+    loadDeferredPhotos();
 });
+
+function loadDeferredPhotos() {
+    const images = [...document.querySelectorAll('img[data-photo-chat-id]')];
+    if (!images.length) return;
+
+    const queues = new Map();
+    const timers = new Map();
+    const active = new Set();
+
+    function schedule(endpoint) {
+        if (timers.has(endpoint) || active.has(endpoint)) return;
+        timers.set(endpoint, setTimeout(() => loadBatch(endpoint), 50));
+    }
+
+    async function loadBatch(endpoint) {
+        timers.delete(endpoint);
+        const queue = queues.get(endpoint) || [];
+        const batch = queue.splice(0, 12);
+        if (!batch.length) return;
+        active.add(endpoint);
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_ids: batch.map(img => Number(img.dataset.photoChatId)) })
+            });
+            if (!response.ok) throw new Error(`Photo request failed: HTTP ${response.status}`);
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || 'Photo request failed');
+
+            batch.forEach(img => {
+                const photo = result.photos[String(img.dataset.photoChatId)];
+                if (!photo) return;
+                img.onload = () => {
+                    img.hidden = false;
+                    const fallback = img.previousElementSibling;
+                    if (fallback && fallback.hasAttribute('data-photo-fallback')) fallback.hidden = true;
+                };
+                img.onerror = () => {
+                    img.hidden = true;
+                    const fallback = img.previousElementSibling;
+                    if (fallback && fallback.hasAttribute('data-photo-fallback')) fallback.hidden = false;
+                };
+                img.src = photo;
+            });
+        } catch (error) {
+            console.warn('Could not load chat photos:', error);
+        } finally {
+            active.delete(endpoint);
+            if (queue.length) schedule(endpoint);
+        }
+    }
+
+    function enqueue(img) {
+        const endpoint = img.dataset.photoEndpoint;
+        const chatId = Number(img.dataset.photoChatId);
+        if (!endpoint || !Number.isSafeInteger(chatId)) return;
+        if (!queues.has(endpoint)) queues.set(endpoint, []);
+        queues.get(endpoint).push(img);
+        schedule(endpoint);
+    }
+
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                observer.unobserve(entry.target);
+                const img = entry.target.matches('img')
+                    ? entry.target
+                    : entry.target.nextElementSibling;
+                if (img) enqueue(img);
+            });
+        }, { rootMargin: '250px' });
+        images.forEach(img => {
+            const fallback = img.previousElementSibling;
+            observer.observe(
+                fallback && fallback.hasAttribute('data-photo-fallback') ? fallback : img
+            );
+        });
+    } else {
+        images.forEach(enqueue);
+    }
+}
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 
