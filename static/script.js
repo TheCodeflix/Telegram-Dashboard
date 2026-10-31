@@ -9,12 +9,17 @@ document.addEventListener('DOMContentLoaded', function () {
 async function checkHealth() {
     try {
         const res = await fetch('/health');
+        if (!res.ok) throw new Error(`Health check failed: HTTP ${res.status}`);
         const data = await res.json();
         const el = document.getElementById('health-indicator');
         if (el) {
-            if (data.status === 'healthy') {
+            el.classList.remove('status-active', 'status-inactive');
+            if (data.status === 'healthy' && data.database === 'connected') {
                 el.textContent = 'Online';
                 el.classList.add('status-active');
+            } else if (data.status === 'degraded' || data.database === 'disconnected') {
+                el.textContent = 'Storage offline';
+                el.classList.add('status-inactive');
             } else {
                 el.textContent = 'Offline';
                 el.classList.add('status-inactive');
@@ -321,9 +326,10 @@ async function loadMembers(page, btnEl) {
 
     try {
         const res = await fetch(`${channelApiBase()}/members?page=${page}&limit=${membersLimit}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!data.success) { showToast('Error: ' + data.error, 'danger'); return; }
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
 
         tbody.innerHTML = data.members.length
             ? data.members.map(m => `
@@ -401,9 +407,10 @@ async function loadMessages(page, btnEl) {
 
     try {
         const res = await fetch(`${channelApiBase()}/messages?page=${page}&limit=${messagesLimit}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!data.success) { showToast('Error: ' + data.error, 'danger'); return; }
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
 
         const renderedMessages = data.messages.map(renderChatMessage).join('');
         if (page > messagesPage && renderedMessages) {

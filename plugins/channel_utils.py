@@ -10,10 +10,12 @@ def get_dialog_type(dialog: dict) -> str:
 
 
 def format_dialog(dialog: dict) -> dict:
+    chat_id = dialog.get("id")
     username = dialog.get("username") or ""
     chat_link = f"https://t.me/{username}" if username else dialog.get("invite_link") or ""
     return {
-        "id": dialog.get("id"),
+        "id": chat_id,
+        "chat_id": chat_id,
         "title": dialog.get("title") or "Unknown",
         "username": username,
         "type": get_dialog_type(dialog),
@@ -39,6 +41,8 @@ def sort_dialogs_by_type(dialogs: list) -> dict:
     for raw in dialogs:
         d = format_dialog(raw)
         t = d["type"]
+        if d["role"] not in result["access_categories"]:
+            d["role"] = "member"
         if t == "channel":
             result["channels"].append(d)
             result["access_categories"][d["role"]].append(d)

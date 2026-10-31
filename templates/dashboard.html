@@ -1,44 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ user_info.user_name or "My Account" }}{% endblock %}
 
-{% block extra_head %}
-<style>
-.avatar-circle {
-    width: 48px; height: 48px; border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 1.2rem; color: #fff; flex-shrink: 0;
-}
-.avatar-sm {
-    width: 36px; height: 36px; border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 0.9rem; color: #fff; flex-shrink: 0;
-}
-.dialog-card { transition: transform 0.15s, box-shadow 0.15s; cursor: pointer; }
-.dialog-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12)!important; }
-.section-title { font-weight: 700; font-size: 1rem; letter-spacing: .5px; text-transform: uppercase; color: #495057; }
-.count-badge { font-size: .75rem; background: #e9ecef; color: #495057; border-radius: 20px; padding: 2px 10px; }
-.stat-card .stat-val { font-size: 2rem; font-weight: 800; }
-.search-box { border-radius: 30px; padding-left: 1rem; }
-.dialog-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-.dialog-actions .dropdown-menu { min-width: 190px; }
-.dialog-item { position: relative; }
-.dialog-item:focus-within { z-index: 20; }
-.dialog-actions .dropdown-menu { z-index: 1080; }
-.access-section { border-top: 1px solid #dee2e6; padding-top: 1rem; }
-</style>
-{% endblock %}
-
 {% block content %}
 
 {# ── User Header ── #}
-<div class="card mb-4">
-    <div class="card-body py-3">
+<section class="dashboard-hero mb-4">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div class="d-flex align-items-center gap-3">
                 {% if user_info.photo %}
                 <img class="avatar-circle" src="{{ user_info.photo }}" alt="{{ user_info.user_name }}" style="object-fit:cover;">
                 {% else %}
-                <div class="avatar-circle" style="background:#0088cc; font-size:1.4rem;">
+                <div class="avatar-circle" style="font-size:1.4rem;">
                     {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
                 </div>
                 {% endif %}
@@ -53,7 +25,7 @@
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <a href="{{ url_for('profile', unique_link=unique_link) }}"
-                   class="btn btn-sm btn-outline-secondary">
+                   class="btn btn-sm btn-outline-light">
                     <i class="fas fa-user me-1"></i>Profile
                 </a>
                 <a href="{{ url_for('web_logout', unique_link=unique_link) }}"
@@ -63,8 +35,7 @@
                 </a>
             </div>
         </div>
-    </div>
-</div>
+</section>
 
 {# ── Account access summary ── #}
 <div class="row g-3 mb-4">
@@ -77,9 +48,9 @@
     <div class="col-6 col-md-3">
         <div class="card stat-card text-center h-100">
             <div class="card-body py-3">
-                <i class="fas fa-{{ icon }} fa-lg mb-2" style="color:{{ color }};"></i>
+                <span class="stat-icon"><i class="fas fa-{{ icon }}"></i></span>
                 <div class="stat-val" style="color:{{ color }};">{{ counts[key] }}</div>
-                <div class="text-muted small fw-semibold">{{ label }}</div>
+                <div class="stat-label">{{ label }}</div>
             </div>
         </div>
     </div>
@@ -88,14 +59,15 @@
 <p class="small text-muted mb-4">Bot count reflects bots in your chats; Telegram does not expose bot ownership in this account data.</p>
 
 {# ── Search ── #}
-<div class="mb-4">
+<div class="search-panel mb-4">
     <div class="input-group">
-        <span class="input-group-text bg-white border-end-0" style="border-radius:30px 0 0 30px;">
+        <span class="input-group-text">
             <i class="fas fa-search text-muted"></i>
         </span>
-        <input id="searchInput" type="text" class="form-control border-start-0 search-box"
-               placeholder="Filter chats, groups, contacts…" style="border-radius:0 30px 30px 0;">
-        <button class="btn btn-telegram ms-2" onclick="window.location.reload()">
+        <input id="searchInput" type="search" class="form-control"
+               placeholder="Search chats by name, username, or chat ID…" autocomplete="off"
+               aria-label="Search chats by name, username, or chat ID">
+        <button class="btn btn-outline-secondary ms-2" type="button" onclick="window.location.reload()" aria-label="Refresh dashboard" title="Refresh dashboard">
             <i class="fas fa-sync-alt"></i>
         </button>
     </div>
@@ -117,7 +89,7 @@
     </div>
     <div class="row g-3">
         {% for item in items %}
-        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}">
+        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
             <div class="card dialog-card h-100">
                 <div class="card-body d-flex align-items-center gap-3 py-3">
                     {% if item.photo %}
@@ -127,7 +99,7 @@
                     {% endif %}
                     <div class="flex-grow-1 overflow-hidden">
                         <div class="fw-semibold text-truncate">
-                            <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.id) }}">
+                            <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">
                             {{ item.title }}
                             </a>
                             {% if item.is_verified %}<i class="fas fa-check-circle text-primary ms-1" title="Verified"></i>{% endif %}
@@ -135,19 +107,21 @@
                         </div>
                         <small class="text-muted text-truncate d-block">
                             {% if item.username %}@{{ item.username }}{% endif %}
-                            {% if item.member_count and section_key in ("channels","groups") %}
+                            {% if item.member_count %}
                                 {% if item.username %}&nbsp;·&nbsp;{% endif %}
                                 {{ "{:,}".format(item.member_count) }} members
                             {% endif %}
                         </small>
                     </div>
                     <div class="dropup dialog-actions flex-shrink-0">
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ item.title }}" title="Chat actions">
+                        <button class="btn btn-sm btn-outline-secondary dialog-action-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ item.title }}" title="Chat actions">
                             <i class="fas fa-bars"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.id) }}"><i class="fas fa-comments me-2"></i>Open chat and data</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.id) }}#tab-admins"><i class="fas fa-user-shield me-2"></i>Show administrators</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}"><i class="fas fa-comments me-2"></i>Open chat and data</a></li>
+                            {% if item.type in ("channel", "supergroup", "group") %}
+                            <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}#tab-admins"><i class="fas fa-user-shield me-2"></i>Show administrators</a></li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             {% if item.chat_link %}
                             <li><button class="dropdown-item" type="button" data-copy-link="{{ item.chat_link }}" onclick="copyToClipboard(this.dataset.copyLink, 'Chat link copied')"><i class="fas fa-link me-2"></i>Copy chat link</button></li>
@@ -179,14 +153,35 @@
     </div>
     <div class="row g-3">
         {% for item in items %}
-        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}">
-            <div class="card h-100">
+        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
+            <div class="card dialog-card h-100">
                 <div class="card-body d-flex align-items-center gap-3 py-3">
                     {% if item.photo %}<img class="dialog-avatar" src="{{ item.photo }}" alt="{{ item.title }}" loading="lazy">
                     {% else %}<div class="avatar-sm" style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>{% endif %}
                     <div class="flex-grow-1 overflow-hidden">
-                        <div class="fw-semibold text-truncate">{{ item.title }}</div>
-                        <small class="text-muted text-truncate d-block">{% if item.username %}@{{ item.username }}{% endif %}</small>
+                        <div class="fw-semibold text-truncate">
+                            <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">{{ item.title }}</a>
+                        </div>
+                        <small class="text-muted text-truncate d-block">
+                            {% if item.username %}@{{ item.username }}{% endif %}
+                            {% if item.member_count %}
+                                {% if item.username %}&nbsp;·&nbsp;{% endif %}
+                                {{ "{:,}".format(item.member_count) }} members
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div class="dropup dialog-actions flex-shrink-0">
+                        <button class="btn btn-sm btn-outline-secondary dialog-action-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ item.title }}" title="Chat actions">
+                            <i class="fas fa-bars"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}"><i class="fas fa-comments me-2"></i>Open chat and history</a></li>
+                            {% if item.chat_link %}
+                            <li><button class="dropdown-item" type="button" data-copy-link="{{ item.chat_link }}" onclick="copyToClipboard(this.dataset.copyLink, 'Chat link copied')"><i class="fas fa-link me-2"></i>Copy chat link</button></li>
+                            {% else %}
+                            <li><span class="dropdown-item text-muted"><i class="fas fa-link me-2"></i>No public link available</span></li>
+                            {% endif %}
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -198,27 +193,39 @@
 {% endfor %}
 
 {% if counts.channels == 0 and counts.groups == 0 and counts.contacts == 0 and counts.bots == 0 %}
-<div class="text-center py-5 text-muted">
-    <i class="fas fa-inbox fa-3x mb-3"></i>
-    <p class="lead">No chats found.</p>
+<div class="empty-state text-muted">
+    <span class="empty-state-icon"><i class="fas fa-inbox"></i></span>
+    <h2 class="h5 fw-bold text-dark">No chats found</h2>
+    <p class="mb-0">Your Telegram chats will appear here once they finish loading.</p>
 </div>
 {% endif %}
+<div id="searchEmptyState" class="empty-state text-muted d-none" role="status">
+    <span class="empty-state-icon"><i class="fas fa-search"></i></span>
+    <h2 class="h5 fw-bold text-dark">No matching chats</h2>
+    <p class="mb-0">Try a different name, username, or chat ID.</p>
+</div>
 
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-document.getElementById('searchInput').addEventListener('input', function () {
+const searchInput = document.getElementById('searchInput');
+if (searchInput) searchInput.addEventListener('input', function () {
     const q = this.value.toLowerCase().trim();
     document.querySelectorAll('.dialog-item').forEach(function (el) {
         const title = el.dataset.title || '';
         const uname = el.dataset.username || '';
-        el.style.display = (!q || title.includes(q) || uname.includes(q)) ? '' : 'none';
+        const chatId = el.dataset.chatId || '';
+        el.style.display = (!q || title.includes(q) || uname.includes(q) || chatId.includes(q)) ? '' : 'none';
     });
+    let hasVisibleChats = false;
     document.querySelectorAll('.dialog-section').forEach(function (sec) {
         const visible = [...sec.querySelectorAll('.dialog-item')].some(e => e.style.display !== 'none');
         sec.style.display = visible ? '' : 'none';
+        hasVisibleChats = hasVisibleChats || visible;
     });
+    const emptyState = document.getElementById('searchEmptyState');
+    if (emptyState) emptyState.classList.toggle('d-none', !q || hasVisibleChats);
 });
 </script>
 {% endblock %}

@@ -1,38 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ info.title or "Channel" }} — Telegram Dashboard{% endblock %}
 
-{# Pass context to JS via data attributes on body #}
-{% block extra_head %}
-<style>
-.tab-pane { padding-top: 1.25rem; }
-.channel-header { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem !important; }
-.channel-back { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #fff; font-size: 1.15rem; text-decoration: none; border-radius: 50%; }
-.channel-back:hover { background: rgba(255,255,255,.16); color: #fff; }
-.channel-photo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; border: 1px solid rgba(255,255,255,.35); }
-.channel-title { min-width: 0; }
-.channel-tabs { overflow-x: auto; flex-wrap: nowrap; }
-.channel-tabs .nav-link { white-space: nowrap; }
-.channel-tab-content { background: transparent; }
-#messagesContainer { height: min(68vh, 760px); min-height: 320px; overflow-y: auto; overscroll-behavior: contain; padding: 1rem; background: #e7eef1; border-radius: 0 0 8px 8px; }
-.chat-message { width: fit-content; max-width: min(82%, 680px); margin: 0 0 .7rem; padding: .65rem .85rem; background: #fff; border-radius: 12px 12px 12px 3px; box-shadow: 0 1px 2px rgba(0,0,0,.08); overflow-wrap: anywhere; }
-.chat-message-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .3rem; }
-.chat-sender { color: #16806a; font-size: .78rem; font-weight: 700; }
-.chat-meta { display: flex; align-items: center; gap: .5rem; color: #718087; font-size: .72rem; white-space: nowrap; }
-.chat-message-text { margin: 0; font-size: .92rem; line-height: 1.45; white-space: pre-wrap; }
-.chat-controls { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .5rem .75rem; background: #fff; border: 1px solid #e3e8eb; border-bottom: 0; border-radius: 8px 8px 0 0; }
-.channel-toolbar { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
-@media (max-width: 576px) {
-    .channel-header { gap: .5rem; padding: .75rem !important; }
-    .channel-header > .d-flex { flex-direction: row; }
-    .channel-back { width: 36px; height: 36px; }
-    .channel-photo { width: 42px; height: 42px; }
-    #messagesContainer { height: 65vh; min-height: 260px; padding: .75rem; }
-    .chat-message { max-width: 94%; }
-    .chat-meta { gap: .35rem; }
-}
-</style>
-{% endblock %}
-
 {% block content %}
 
 {# JS context — read by script.js #}
@@ -173,12 +141,16 @@
                             </div>
                         </div>
                         {% endif %}
+                        {% if info.type in ("channel", "supergroup", "group") %}
                         <div id="inviteActionsArea">
                             <button class="btn btn-sm btn-telegram"
                                     onclick="generateInviteLink(this)">
                                 <i class="fas fa-plus me-1"></i>Generate New Link
                             </button>
                         </div>
+                        {% else %}
+                        <p class="small text-muted mb-0">Invite links are available for groups and channels.</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -187,6 +159,14 @@
 
     {# ── Admins Tab ── #}
     <div class="tab-pane fade" id="tab-admins" role="tabpanel">
+        {% if errors.get("admins") %}
+        <div class="alert alert-warning" role="alert">Could not load administrators: {{ errors.get("admins") }}</div>
+        {% elif info.type not in ("channel", "supergroup", "group") %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-user-shield fa-2x mb-2"></i>
+            <p>Administrator lists are available for groups and channels.</p>
+        </div>
+        {% endif %}
         {% if admins %}
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -230,7 +210,7 @@
                 </tbody>
             </table>
         </div>
-        {% else %}
+        {% elif not errors.get("admins") and info.type in ("channel", "supergroup", "group") %}
         <div class="text-center text-muted py-5">
             <i class="fas fa-shield-alt fa-2x mb-2"></i>
             <p>No admin data available.</p>
@@ -240,6 +220,15 @@
 
     {# ── Members Tab ── #}
     <div class="tab-pane fade" id="tab-members" role="tabpanel">
+        {% if errors.get("members") %}
+        <div class="alert alert-warning" role="alert">Could not load members: {{ errors.get("members") }}</div>
+        {% elif info.type not in ("channel", "supergroup", "group") %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-users fa-2x mb-2"></i>
+            <p>Member lists are available for groups and channels.</p>
+        </div>
+        {% endif %}
+        {% if info.type in ("channel", "supergroup", "group") %}
         <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
             <input type="text" class="form-control form-control-sm" style="max-width:240px"
                    placeholder="Search members…" oninput="filterMembers(this.value)">
@@ -292,13 +281,17 @@
                 Showing {{ members|length }} members (initial load)
             </span>
         </div>
+        {% endif %}
     </div>
 
     {# ── Messages Tab ── #}
     <div class="tab-pane fade show active" id="tab-messages" role="tabpanel">
+        {% if errors.get("messages") %}
+        <div class="alert alert-warning" role="alert">Could not load chat history: {{ errors.get("messages") }}</div>
+        {% endif %}
         <div class="chat-controls">
             <button id="messagesNextBtn" class="btn btn-sm btn-outline-secondary"
-                    onclick="messagesNext()" {% if messages|length < 30 %}disabled{% endif %}>
+                    onclick="messagesNext()" {% if messages|length < 30 or errors.get("messages") %}disabled{% endif %}>
                 <i class="fas fa-arrow-up me-1"></i>Load older
             </button>
             <span id="messagesStatus" class="small text-muted">{{ messages|length }} recent messages</span>
@@ -338,6 +331,7 @@
 
     {# ── Actions Tab ── #}
     <div class="tab-pane fade" id="tab-actions" role="tabpanel">
+        {% if info.type in ("channel", "supergroup", "group") %}
         <div class="row g-3">
             <div class="col-md-6">
                 <div class="card">
@@ -346,13 +340,15 @@
                             <i class="fas fa-link me-2 text-success"></i>Invite Link
                         </h6>
                         <p class="text-muted small mb-3">Generate a new one-time or permanent invite link.</p>
-                        <button class="btn btn-sm btn-success" onclick="generateInviteLink(this)">
-                            <i class="fas fa-plus me-1"></i>Generate Invite Link
-                        </button>
-                        <div id="inviteActionsArea" class="mt-2"></div>
+                        <div id="inviteActionsAreaActions" class="mt-2">
+                            <button class="btn btn-sm btn-success" onclick="generateInviteLink(this)">
+                                <i class="fas fa-plus me-1"></i>Generate Invite Link
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
+            {% if info.type in ("channel", "supergroup") %}
             <div class="col-md-6">
                 <div class="card border-warning">
                     <div class="card-body">
@@ -368,8 +364,17 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </div>
-    </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-comments fa-2x text-primary mb-3"></i>
+                <h6 class="fw-bold">Chat actions</h6>
+                <p class="text-muted mb-0">Group management actions are not available for private users and bots. Chat history is available in the Chat tab.</p>
+            </div>
+        </div>
+        {% endif %}
 
 </div>
 

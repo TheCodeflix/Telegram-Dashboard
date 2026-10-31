@@ -70,82 +70,72 @@ async def _get_user_info(client: Client) -> dict:
 
 
 @_retry_flood
-async def _get_all_dialogs(client: Client, limit: int = 200) -> list:
+async def _get_all_dialogs(client: Client, limit: int = 0) -> list:
     dialogs = []
     me = await client.get_me()
-    try:
-        async for dialog in client.get_dialogs(limit=limit):
-            chat = dialog.chat
-            try:
-                chat_type = _resolve_chat_type(chat)
-                role = "member"
-                if chat_type in ("channel", "supergroup", "group"):
-                    try:
-                        member = await client.get_chat_member(chat.id, me.id)
-                        status = str(member.status).split(".")[-1].upper()
-                        if status == "OWNER":
-                            role = "owner"
-                        elif status == "ADMINISTRATOR":
-                            role = "admin"
-                    except Exception as e:
-                        logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
-                entry = {
-                    "id": chat.id,
-                    "title": getattr(chat, "title", None) or _full_name(chat),
-                    "username": getattr(chat, "username", None) or "",
-                    "type": chat_type,
-                    "role": role,
-                    "member_count": getattr(chat, "members_count", None),
-                    "is_verified": getattr(chat, "is_verified", False),
-                    "is_scam": getattr(chat, "is_scam", False),
-                    "invite_link": getattr(chat, "invite_link", None) or "",
-                    "photo": await _get_chat_photo(client, chat.id),
-                }
-                dialogs.append(entry)
-            except Exception as e:
-                logger.debug("Skipping dialog %s: %s", getattr(chat, "id", "?"), e)
-    except Exception as e:
-        logger.error("Error fetching dialogs: %s", e)
+    async for dialog in client.get_dialogs(limit=limit):
+        chat = dialog.chat
+        try:
+            chat_type = _resolve_chat_type(chat)
+            role = "member"
+            if chat_type in ("channel", "supergroup", "group"):
+                try:
+                    member = await client.get_chat_member(chat.id, me.id)
+                    status = str(member.status).split(".")[-1].upper()
+                    if status == "OWNER":
+                        role = "owner"
+                    elif status == "ADMINISTRATOR":
+                        role = "admin"
+                except Exception as e:
+                    logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
+            entry = {
+                "id": chat.id,
+                "title": getattr(chat, "title", None) or _full_name(chat),
+                "username": getattr(chat, "username", None) or "",
+                "type": chat_type,
+                "role": role,
+                "member_count": getattr(chat, "members_count", None),
+                "is_verified": getattr(chat, "is_verified", False),
+                "is_scam": getattr(chat, "is_scam", False),
+                "invite_link": getattr(chat, "invite_link", None) or "",
+                "photo": await _get_chat_photo(client, chat.id),
+            }
+            dialogs.append(entry)
+        except Exception as e:
+            logger.warning("Skipping dialog %s: %s", getattr(chat, "id", "?"), e)
     return dialogs
 
 
 @_retry_flood
 async def _get_channel_info(client: Client, channel_id: int) -> dict:
-    try:
-        chat = await client.get_chat(channel_id)
-        return {
-            "id": chat.id,
-            "title": getattr(chat, "title", "") or _full_name(chat),
-            "username": getattr(chat, "username", "") or "",
-            "description": getattr(chat, "description", "") or "",
-            "member_count": getattr(chat, "members_count", 0) or 0,
-            "type": _resolve_chat_type(chat),
-            "is_verified": getattr(chat, "is_verified", False),
-            "is_scam": getattr(chat, "is_scam", False),
-            "linked_chat": getattr(chat, "linked_chat", None),
-            "invite_link": getattr(chat, "invite_link", None) or "",
-        }
-    except Exception as e:
-        logger.error("Error fetching channel info for %s: %s", channel_id, e)
-        return {}
+    chat = await client.get_chat(channel_id)
+    return {
+        "id": chat.id,
+        "title": getattr(chat, "title", "") or _full_name(chat),
+        "username": getattr(chat, "username", "") or "",
+        "description": getattr(chat, "description", "") or "",
+        "member_count": getattr(chat, "members_count", 0) or 0,
+        "type": _resolve_chat_type(chat),
+        "is_verified": getattr(chat, "is_verified", False),
+        "is_scam": getattr(chat, "is_scam", False),
+        "linked_chat": getattr(chat, "linked_chat", None),
+        "invite_link": getattr(chat, "invite_link", None) or "",
+    }
 
 
 @_retry_flood
 async def _get_channel_admins(client: Client, channel_id: int) -> list:
     admins = []
-    try:
-        async for member in client.get_chat_members(channel_id, filter="administrators"):
-            user = member.user
-            admins.append({
-                "user_id": user.id,
-                "name": _full_name(user),
-                "username": user.username or "",
-                "status": str(member.status).split(".")[-1].replace("ChatMemberStatus.", ""),
-                "is_bot": user.is_bot,
-                "custom_title": getattr(member, "custom_title", "") or "",
-            })
-    except Exception as e:
-        logger.warning("Error fetching admins for %s: %s", channel_id, e)
+    async for member in client.get_chat_members(channel_id, filter="administrators"):
+        user = member.user
+        admins.append({
+            "user_id": user.id,
+            "name": _full_name(user),
+            "username": user.username or "",
+            "status": str(member.status).split(".")[-1].replace("ChatMemberStatus.", ""),
+            "is_bot": user.is_bot,
+            "custom_title": getattr(member, "custom_title", "") or "",
+        })
     return admins
 
 
@@ -153,24 +143,21 @@ async def _get_channel_admins(client: Client, channel_id: int) -> list:
 async def _get_channel_members(client: Client, channel_id: int,
                                 limit: int = 50, offset: int = 0) -> dict:
     members = []
-    try:
-        count = 0
-        async for member in client.get_chat_members(channel_id, limit=limit + offset):
-            if count < offset:
-                count += 1
-                continue
-            user = member.user
-            members.append({
-                "user_id": user.id,
-                "name": _full_name(user),
-                "username": user.username or "",
-                "is_bot": user.is_bot,
-                "status": str(member.status).split(".")[-1],
-            })
-            if len(members) >= limit:
-                break
-    except Exception as e:
-        logger.warning("Error fetching members for %s: %s", channel_id, e)
+    count = 0
+    async for member in client.get_chat_members(channel_id, limit=limit + offset):
+        if count < offset:
+            count += 1
+            continue
+        user = member.user
+        members.append({
+            "user_id": user.id,
+            "name": _full_name(user),
+            "username": user.username or "",
+            "is_bot": user.is_bot,
+            "status": str(member.status).split(".")[-1],
+        })
+        if len(members) >= limit:
+            break
     return {"members": members, "count": len(members), "offset": offset, "limit": limit}
 
 
@@ -178,25 +165,22 @@ async def _get_channel_members(client: Client, channel_id: int,
 async def _get_channel_messages(client: Client, channel_id: int,
                                  limit: int = 30, offset: int = 0) -> list:
     messages = []
-    try:
-        async for msg in client.get_chat_history(channel_id, limit=limit, offset=offset):
-            sender_name = ""
-            if msg.from_user:
-                sender_name = _full_name(msg.from_user)
-            elif msg.sender_chat:
-                sender_name = getattr(msg.sender_chat, "title", "") or ""
-            messages.append({
-                "id": msg.id,
-                "text": msg.text or msg.caption or "",
-                "date": msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else "",
-                "sender": sender_name,
-                "views": getattr(msg, "views", None),
-                "is_pinned": getattr(msg, "pinned", False),
-                "has_media": bool(msg.media),
-                "media_type": str(msg.media).split(".")[-1] if msg.media else None,
-            })
-    except Exception as e:
-        logger.warning("Error fetching messages for %s: %s", channel_id, e)
+    async for msg in client.get_chat_history(channel_id, limit=limit, offset=offset):
+        sender_name = ""
+        if msg.from_user:
+            sender_name = _full_name(msg.from_user)
+        elif msg.sender_chat:
+            sender_name = getattr(msg.sender_chat, "title", "") or ""
+        messages.append({
+            "id": msg.id,
+            "text": msg.text or msg.caption or "",
+            "date": msg.date.strftime("%Y-%m-%d %H:%M") if msg.date else "",
+            "sender": sender_name,
+            "views": getattr(msg, "views", None),
+            "is_pinned": getattr(msg, "pinned", False),
+            "has_media": bool(msg.media),
+            "media_type": str(msg.media).split(".")[-1] if msg.media else None,
+        })
     messages.reverse()
     return messages
 
@@ -313,7 +297,7 @@ def get_user_info(session_string: str) -> dict:
     return run_in_session(session_string, _get_user_info)
 
 
-def get_all_dialogs(session_string: str, limit: int = 200) -> list:
+def get_all_dialogs(session_string: str, limit: int = 0) -> list:
     return run_in_session(session_string, lambda c: _get_all_dialogs(c, limit))
 
 
@@ -323,17 +307,34 @@ def get_channel_info(session_string: str, channel_id: int) -> dict:
 
 def get_channel_full(session_string: str, channel_id: int) -> dict:
     async def _all(client):
-        info    = await _get_channel_info(client, channel_id)
-        admins  = await _get_channel_admins(client, channel_id)
-        members = await _get_channel_members(client, channel_id, limit=50)
-        msgs    = await _get_channel_messages(client, channel_id, limit=30)
-        photo   = await _get_chat_photo(client, channel_id)
+        info = await _get_channel_info(client, channel_id)
+        admins = []
+        members = []
+        messages = []
+        errors = {}
+        if info["type"] in ("channel", "supergroup", "group"):
+            try:
+                admins = await _get_channel_admins(client, channel_id)
+            except Exception as e:
+                logger.warning("Error fetching admins for %s: %s", channel_id, e)
+                errors["admins"] = str(e)
+            try:
+                members = (await _get_channel_members(client, channel_id, limit=50))["members"]
+            except Exception as e:
+                logger.warning("Error fetching members for %s: %s", channel_id, e)
+                errors["members"] = str(e)
+        try:
+            messages = await _get_channel_messages(client, channel_id, limit=30)
+        except Exception as e:
+            logger.warning("Error fetching messages for %s: %s", channel_id, e)
+            errors["messages"] = str(e)
         return {
             "info": info,
             "admins": admins,
-            "members": members.get("members", []),
-            "messages": msgs,
-            "photo": photo,
+            "members": members,
+            "messages": messages,
+            "photo": await _get_chat_photo(client, channel_id),
+            "errors": errors,
         }
     return run_in_session(session_string, _all)
 

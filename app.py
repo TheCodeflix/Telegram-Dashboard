@@ -200,7 +200,8 @@ def too_many_requests(e):
 @app.route("/health", methods=["GET"])
 def health():
     db_status = "connected" if get_db() is not None else "disconnected"
-    return jsonify({"status": "healthy", "database": db_status})
+    status = "healthy" if db_status == "connected" else "degraded"
+    return jsonify({"status": status, "database": db_status})
 
 
 @app.route("/", methods=["GET"])
@@ -247,14 +248,10 @@ def dashboard(unique_link):
             cache_set(dialogs_key, dialogs_data)
         except Exception as e:
             logger.error("Failed to fetch dialogs for unique_link=%s: %s", unique_link, e)
-            dialogs_data = {
-                "sorted": {
-                    "channels": [], "groups": [], "contacts": [], "bots": [],
-                    "access_categories": {"owner": [], "admin": [], "member": []},
-                },
-                "counts": {"channels": 0, "groups": 0, "contacts": 0, "bots": 0,
-                           "owner": 0, "admin": 0, "member": 0},
-            }
+            return render_template(
+                "500.html",
+                message="Could not load your Telegram chats. Please refresh and try again."
+            ), 503
 
     return render_template(
         "dashboard.html",
@@ -285,7 +282,8 @@ def channel_view(unique_link, channel_id):
     if data is None:
         try:
             data = telegram_client.get_channel_full(session_string, channel_id)
-            cache_set(cache_key, data)
+            if not data.get("errors"):
+                cache_set(cache_key, data)
         except Exception as e:
             logger.error("Failed to fetch channel %s for unique_link=%s: %s", channel_id, unique_link, e)
             return render_template("500.html"), 503
@@ -299,6 +297,7 @@ def channel_view(unique_link, channel_id):
         admins=data.get("admins", []),
         members=members,
         messages=messages,
+        errors=data.get("errors", {}),
         photo=data.get("photo"),
         unique_link=unique_link,
         channel_id=channel_id,
@@ -479,8 +478,11 @@ def channel_members_ajax(unique_link, channel_id):
     if err:
         return err
 
-    page = max(1, int(request.args.get("page", 1)))
-    limit = min(100, max(10, int(request.args.get("limit", 50))))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(10, int(request.args.get("limit", 50))))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "page and limit must be integers"}), 400
     offset = (page - 1) * limit
 
     try:
@@ -510,8 +512,11 @@ def channel_messages_ajax(unique_link, channel_id):
     if err:
         return err
 
-    page = max(1, int(request.args.get("page", 1)))
-    limit = min(100, max(10, int(request.args.get("limit", 30))))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(10, int(request.args.get("limit", 30))))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "page and limit must be integers"}), 400
     offset = (page - 1) * limit
 
     try:

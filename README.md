@@ -5,6 +5,9 @@ A self-hosted web dashboard for your Telegram account. Submit your Pyrogram sess
 
 ## Features
 
+- Browse every Telegram dialog (channels, groups, bots, and contacts) using its Telegram chat ID.
+- Open chat history, channel/group details, administrators, and members from the dashboard.
+- Load older messages from Telegram history on demand.
 
 
 ## Quick Start
@@ -173,4 +176,3 @@ telegram-web-dashboard/
 
 
 ## Security Notes
-
