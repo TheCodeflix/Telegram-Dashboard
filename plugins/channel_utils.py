@@ -90,10 +90,12 @@ def format_members_list(members: list) -> list:
 def format_message(msg: dict) -> dict:
     """Enrich a raw message dict (truncate text, add media label)."""
     text = msg.get("text") or ""
+    media_type = (msg.get("media_type") or "").upper()
     return {
         **msg,
         "short_text": text[:400] + ("…" if len(text) > 400 else ""),
-        "media_label": _media_label(msg.get("media_type")),
+        "media_label": msg.get("media_label") or _media_label(media_type),
+        "media_icon": _media_icon(media_type),
     }
 
 
@@ -140,3 +142,23 @@ def _media_label(media_type: str | None) -> str:
         return ""
     key = (media_type or "").upper().replace("MESSAGEMEDIATYPE.", "")
     return _MEDIA_LABELS.get(key, "📎 Media")
+
+
+def _media_icon(media_type: str) -> str:
+    return {
+        "PHOTO": "fa-image",
+        "VIDEO": "fa-film",
+        "ANIMATION": "fa-film",
+        "STICKER": "fa-face-smile",
+        "DOCUMENT": "fa-file-lines",
+        "AUDIO": "fa-music",
+        "VOICE": "fa-microphone",
+        "VIDEO_NOTE": "fa-circle-play",
+        "CONTACT": "fa-address-card",
+        "LOCATION": "fa-location-dot",
+        "VENUE": "fa-map-location-dot",
+        "POLL": "fa-square-poll-vertical",
+        "DICE": "fa-dice",
+        "GAME": "fa-gamepad",
+        "WEB_PAGE": "fa-link",
+    }.get(media_type, "fa-paperclip")

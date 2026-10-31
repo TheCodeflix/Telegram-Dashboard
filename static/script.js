@@ -313,6 +313,25 @@ async function deleteMessage(messageId, rowEl) {
     }
 }
 
+function getMessageLink(messageId) {
+    const channelId = String(document.body.dataset.channelId || '');
+    const username = String(document.body.dataset.chatUsername || '').replace(/^@/, '');
+    if (username) {
+        return `https://t.me/${encodeURIComponent(username)}/${encodeURIComponent(messageId)}`;
+    }
+
+    const privateChannelId = channelId.match(/^-100(\d+)$/);
+    if (privateChannelId) {
+        return `https://t.me/c/${privateChannelId[1]}/${encodeURIComponent(messageId)}`;
+    }
+
+    return `tg://openmessage?chat_id=${encodeURIComponent(channelId)}&message_id=${encodeURIComponent(messageId)}`;
+}
+
+function copyMessageLink(messageId) {
+    copyToClipboard(getMessageLink(messageId), 'Telegram message link copied');
+}
+
 // ─── Members pagination ───────────────────────────────────────────────────────
 
 let membersPage = 1;
@@ -374,11 +393,30 @@ const messagesLimit = 30;
 
 function renderChatMessage(msg) {
     const messageId = Number(msg.id) || 0;
+    const mediaLabel = escHtml(msg.media_label || 'Media');
+    const mediaType = String(msg.media_type || '').toUpperCase();
+    const mediaIcon = escHtml(msg.media_icon || 'fa-paperclip');
+    const mediaName = msg.media_name || msg.media_mime_type || '';
+    const mediaPreview = msg.media_preview
+        ? `<div class="media-thumbnail-wrap">
+                <img class="media-thumbnail" src="${escHtml(msg.media_preview)}" alt="${mediaLabel} thumbnail" loading="lazy">
+                ${['VIDEO', 'ANIMATION', 'VIDEO_NOTE'].includes(mediaType)
+                    ? '<span class="media-play-indicator" aria-hidden="true"><i class="fas fa-play"></i></span>'
+                    : ''}
+           </div>`
+        : `<div class="media-type-icon"><i class="fas ${mediaIcon}"></i></div>`;
+    const media = msg.has_media
+        ? `<div class="chat-media-preview">${mediaPreview}
+                <div class="media-details">
+                    <span class="media-type-label">${mediaLabel}</span>
+                    ${mediaName ? `<span class="media-name">${escHtml(mediaName)}</span>` : ''}
+                    ${msg.media_duration ? `<span class="media-name">${escHtml(msg.media_duration)} sec</span>` : ''}
+                </div>
+           </div>`
+        : '';
     const text = msg.short_text
-        ? escHtml(msg.short_text)
-        : (msg.media_label
-            ? `<span class="text-muted">${escHtml(msg.media_label)}</span>`
-            : '<span class="text-muted">Empty message</span>');
+        ? `<p class="chat-message-text">${escHtml(msg.short_text)}</p>`
+        : (msg.has_media ? '' : '<p class="chat-message-text text-muted">Empty message</p>');
 
     return `
         <article class="chat-message" id="msg-${messageId}">
@@ -388,14 +426,27 @@ function renderChatMessage(msg) {
                     ${msg.views ? `<span><i class="fas fa-eye me-1"></i>${fmtNum(msg.views)}</span>` : ''}
                     ${msg.is_pinned ? '<span title="Pinned"><i class="fas fa-thumbtack"></i></span>' : ''}
                     <time>${escHtml(msg.date)}</time>
-                    <button class="btn btn-xs btn-outline-danger delete-msg-btn"
-                            onclick="deleteMessage(${messageId}, document.getElementById('msg-${messageId}'))"
-                            title="Delete message" aria-label="Delete message">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+                    <div class="dropup message-actions">
+                        <button class="btn btn-sm btn-outline-secondary message-action-button" type="button"
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                aria-label="Actions for message ${messageId}" title="Message actions">
+                            <i class="fas fa-ellipsis"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><button class="dropdown-item" type="button" onclick="copyMessageLink(${messageId})">
+                                <i class="fas fa-link me-2"></i>Copy message link
+                            </button></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><button class="dropdown-item text-danger" type="button"
+                                onclick="deleteMessage(${messageId}, document.getElementById('msg-${messageId}'))">
+                                <i class="fas fa-trash-alt me-2"></i>Delete message
+                            </button></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
-            <p class="chat-message-text">${text}</p>
+            ${media}
+            ${text}
         </article>`;
 }
 

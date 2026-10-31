@@ -65,7 +65,7 @@ async def _get_user_info(client: Client) -> dict:
         "phone": me.phone_number or "",
         "is_premium": getattr(me, "is_premium", False),
         "dc_id": getattr(me, "dc_id", None),
-        "photo": await _get_chat_photo(client, me.id),
+        "photo": await _get_chat_photo(client, me),
     }
 
 
@@ -98,7 +98,7 @@ async def _get_all_dialogs(client: Client, limit: int = 0) -> list:
                 "is_verified": getattr(chat, "is_verified", False),
                 "is_scam": getattr(chat, "is_scam", False),
                 "invite_link": getattr(chat, "invite_link", None) or "",
-                "photo": await _get_chat_photo(client, chat.id),
+                "photo": await _get_chat_photo(client, chat),
             }
             dialogs.append(entry)
         except Exception as e:
@@ -120,6 +120,7 @@ async def _get_channel_info(client: Client, channel_id: int) -> dict:
         "is_scam": getattr(chat, "is_scam", False),
         "linked_chat": getattr(chat, "linked_chat", None),
         "invite_link": getattr(chat, "invite_link", None) or "",
+        "photo": await _get_chat_photo(client, chat),
     }
 
 
@@ -171,6 +172,7 @@ async def _get_channel_messages(client: Client, channel_id: int,
             sender_name = _full_name(msg.from_user)
         elif msg.sender_chat:
             sender_name = getattr(msg.sender_chat, "title", "") or ""
+        media_data = await _get_message_media_data(client, msg)
         messages.append({
             "id": msg.id,
             "text": msg.text or msg.caption or "",
@@ -179,7 +181,7 @@ async def _get_channel_messages(client: Client, channel_id: int,
             "views": getattr(msg, "views", None),
             "is_pinned": getattr(msg, "pinned", False),
             "has_media": bool(msg.media),
-            "media_type": str(msg.media).split(".")[-1] if msg.media else None,
+            **media_data,
         })
     messages.reverse()
     return messages
@@ -258,17 +260,120 @@ async def _transfer_ownership(client: Client, channel_id: int,
     return True
 
 
-async def _get_chat_photo(client: Client, chat_id: int):
-    """Download chat photo and return base64 data URI, or None."""
+async def _get_chat_photo(client: Client, chat):
+    """Return a chat's small profile photo as an in-memory data URI."""
+    photo = getattr(chat, "photo", None)
+    if not photo or not getattr(photo, "small_file_id", None):
+        return None
+
     try:
-        path = await client.download_profile_photo(chat_id, in_memory=True)
-        if path:
-            data = path.getvalue()
-            b64 = base64.b64encode(data).decode()
-            return f"data:image/jpeg;base64,{b64}"
+        image = await client.download_media(photo.small_file_id, in_memory=True)
+        return _image_data_uri(image)
     except Exception as e:
-        logger.debug("Could not download chat photo for %s: %s", chat_id, e)
+        logger.warning("Could not load profile photo for chat %s: %s", getattr(chat, "id", "?"), e)
     return None
+
+
+async def _get_message_media_data(client: Client, message) -> dict:
+    media_type = getattr(message.media, "name", "") if message.media else ""
+    media_type = media_type or (str(message.media).split(".")[-1] if message.media else "")
+    media_type = media_type.upper()
+    media_obj = None
+    for kind in (
+        "photo", "video", "animation", "sticker", "document", "audio",
+        "voice", "video_note", "contact", "location", "venue", "poll",
+        "dice", "game", "web_page",
+    ):
+        value = getattr(message, kind, None)
+        if value is not None:
+            if not media_type:
+                media_type = kind.upper()
+            media_obj = value
+            break
+
+    if media_type == "WEB_PAGE" and media_obj:
+        media_obj = (
+            getattr(media_obj, "photo", None)
+            or getattr(media_obj, "video", None)
+            or getattr(media_obj, "document", None)
+        )
+
+    thumbnails = getattr(media_obj, "thumbs", None) or []
+    preview = None
+    candidates = sorted(
+        (thumb for thumb in thumbnails if getattr(thumb, "file_size", 0) <= 96_000),
+        key=lambda thumb: getattr(thumb, "file_size", 0),
+    )
+    if candidates:
+        thumbnail = candidates[-1]
+        try:
+            image = await client.download_media(thumbnail.file_id, in_memory=True)
+            preview = _image_data_uri(image, max_size=96_000)
+        except Exception as e:
+            logger.warning("Could not load thumbnail for message %s: %s", message.id, e)
+
+    return {
+        "media_type": media_type or None,
+        "media_label": _media_label(media_type),
+        "media_preview": preview,
+        "media_name": (
+            getattr(media_obj, "file_name", None)
+            or getattr(media_obj, "emoji", None)
+            or ""
+        ),
+        "media_mime_type": getattr(media_obj, "mime_type", None) or "",
+        "media_duration": getattr(media_obj, "duration", None),
+        "media_size": getattr(media_obj, "file_size", None),
+    }
+
+
+def _image_data_uri(image, max_size: int = 160_000):
+    if not image:
+        return None
+    if isinstance(image, bytes):
+        data = image
+    else:
+        data = image.getvalue() if hasattr(image, "getvalue") else image.read()
+    if not data or len(data) > max_size:
+        return None
+
+    if data.startswith(b"\xff\xd8\xff"):
+        mime_type = "image/jpeg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime_type = "image/png"
+    elif data.startswith((b"RIFF",)) and data[8:12] == b"WEBP":
+        mime_type = "image/webp"
+    elif data.startswith((b"GIF87a", b"GIF89a")):
+        mime_type = "image/gif"
+    else:
+        logger.warning("Ignoring Telegram image with unknown format")
+        return None
+
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+_MEDIA_LABELS = {
+    "PHOTO": "Photo",
+    "VIDEO": "Video",
+    "ANIMATION": "GIF",
+    "STICKER": "Sticker",
+    "DOCUMENT": "Document",
+    "AUDIO": "Audio",
+    "VOICE": "Voice message",
+    "VIDEO_NOTE": "Video message",
+    "CONTACT": "Contact",
+    "LOCATION": "Location",
+    "VENUE": "Place",
+    "POLL": "Poll",
+    "DICE": "Dice",
+    "GAME": "Game",
+    "WEB_PAGE": "Link preview",
+}
+
+
+def _media_label(media_type: str) -> str:
+    return _MEDIA_LABELS.get(media_type, "Media")
 
 
 # ─── Sync wrapper (one fresh event loop per call) ────────────────────────────
@@ -347,7 +452,7 @@ def get_channel_full(session_string: str, channel_id: int) -> dict:
             "admins": admins,
             "members": members,
             "messages": messages,
-            "photo": await _get_chat_photo(client, channel_id),
+            "photo": info.get("photo"),
             "errors": errors,
         }
     return run_in_session(session_string, _all, chat_id=channel_id)
@@ -412,8 +517,12 @@ def transfer_ownership(session_string: str, channel_id: int,
 
 
 def get_chat_photo(session_string: str, chat_id: int):
+    async def _get_photo(client):
+        chat = await client.get_chat(chat_id)
+        return await _get_chat_photo(client, chat)
+
     return run_in_session(
-        session_string, lambda c: _get_chat_photo(c, chat_id), chat_id=chat_id
+        session_string, _get_photo, chat_id=chat_id
     )
 
 

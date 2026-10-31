@@ -16,11 +16,19 @@
     <div class="card mb-4">
         <div class="card-body">
             <div class="d-flex align-items-center gap-3 mb-4">
+                {% if user_info.photo %}
+                <img class="avatar-profile" src="{{ user_info.photo }}" alt="{{ user_info.user_name or 'Profile photo' }}"
+                     onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                <div class="avatar-profile" hidden>
+                    {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
+                </div>
+                {% else %}
                 <div style="width:64px;height:64px;border-radius:50%;background:#0088cc;
                             display:flex;align-items:center;justify-content:center;
                             font-size:1.6rem;font-weight:800;color:#fff;">
                     {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
                 </div>
+                {% endif %}
                 <div>
                     <h5 class="fw-bold mb-0">{{ user_info.user_name or "Unknown" }}</h5>
                     <small class="text-muted">

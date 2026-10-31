@@ -8,6 +8,8 @@ A self-hosted web dashboard for your Telegram account. Submit your Pyrogram sess
 - Browse every Telegram dialog (channels, groups, bots, and contacts) using its Telegram chat ID.
 - Open chat history, channel/group details, administrators, and members from the dashboard.
 - Load older messages from Telegram history on demand.
+- Display chat avatars and in-memory media thumbnails with captions and media types; full media files are not saved.
+- Copy Telegram message links or delete messages from each message's action menu.
 
 
 ## Quick Start

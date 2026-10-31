@@ -7,6 +7,7 @@
 <span id="js-ctx"
       data-unique-link="{{ unique_link }}"
       data-channel-id="{{ channel_id }}"
+      data-chat-username="{{ info.username or '' }}"
       style="display:none"></span>
 
 <script>
@@ -14,6 +15,7 @@
     const ctx = document.getElementById('js-ctx');
     document.body.dataset.uniqueLink = ctx.dataset.uniqueLink;
     document.body.dataset.channelId  = ctx.dataset.channelId;
+    document.body.dataset.chatUsername = ctx.dataset.chatUsername;
 })();
 </script>
 
@@ -25,7 +27,11 @@
     <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
         {% if photo %}
         <img src="{{ photo }}" alt="{{ info.title }}"
-             class="channel-photo">
+             class="channel-photo"
+             onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+        <div class="channel-photo channel-photo-fallback" hidden>
+            {{ (info.title or "?")[0]|upper }}
+        </div>
         {% else %}
         <div class="channel-photo" style="background:rgba(255,255,255,.2);
                     display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;">
@@ -310,16 +316,60 @@
                     {% if msg.views %}<span><i class="fas fa-eye me-1"></i>{{ "{:,}".format(msg.views) }}</span>{% endif %}
                     {% if msg.is_pinned %}<span title="Pinned"><i class="fas fa-thumbtack"></i></span>{% endif %}
                     <time>{{ msg.date }}</time>
-                    <button class="btn btn-xs btn-outline-danger delete-msg-btn"
-                            onclick="deleteMessage({{ msg.id }}, document.getElementById('msg-{{ msg.id }}'))"
-                            title="Delete message" aria-label="Delete message">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+                    <div class="dropup message-actions">
+                        <button class="btn btn-sm btn-outline-secondary message-action-button" type="button"
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                aria-label="Actions for message {{ msg.id }}" title="Message actions">
+                            <i class="fas fa-ellipsis"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <button class="dropdown-item" type="button" onclick="copyMessageLink({{ msg.id }})">
+                                    <i class="fas fa-link me-2"></i>Copy message link
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button class="dropdown-item text-danger" type="button"
+                                        onclick="deleteMessage({{ msg.id }}, document.getElementById('msg-{{ msg.id }}'))">
+                                    <i class="fas fa-trash-alt me-2"></i>Delete message
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
-            <p class="chat-message-text">
-                {% if msg.short_text %}{{ msg.short_text }}{% elif msg.has_media %}<span class="text-muted">{{ msg.media_label or "Media attachment" }}</span>{% else %}<span class="text-muted">Empty message</span>{% endif %}
-            </p>
+            {% if msg.has_media %}
+            <div class="chat-media-preview">
+                {% if msg.media_preview %}
+                <div class="media-thumbnail-wrap">
+                    <img class="media-thumbnail" src="{{ msg.media_preview }}"
+                         alt="{{ msg.media_label }} thumbnail" loading="lazy">
+                    {% if msg.media_type in ("VIDEO", "ANIMATION", "VIDEO_NOTE") %}
+                    <span class="media-play-indicator" aria-hidden="true"><i class="fas fa-play"></i></span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="media-type-icon"><i class="fas {{ msg.media_icon }}"></i></div>
+                {% endif %}
+                <div class="media-details">
+                    <span class="media-type-label">{{ msg.media_label or "Media" }}</span>
+                    {% if msg.media_name %}
+                    <span class="media-name">{{ msg.media_name }}</span>
+                    {% elif msg.media_mime_type %}
+                    <span class="media-name">{{ msg.media_mime_type }}</span>
+                    {% endif %}
+                    {% if msg.media_duration %}
+                    <span class="media-name">{{ msg.media_duration }} sec</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% if msg.short_text %}
+            <p class="chat-message-text">{{ msg.short_text }}</p>
+            {% elif not msg.has_media %}
+            <p class="chat-message-text text-muted">Empty message</p>
+            {% endif %}
         </article>
         {% else %}
         <div class="text-center text-muted py-5">
