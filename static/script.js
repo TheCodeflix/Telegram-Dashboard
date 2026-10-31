@@ -3,7 +3,153 @@
 document.addEventListener('DOMContentLoaded', function () {
     checkHealth();
     loadDeferredPhotos();
+    observeDeferredThumbnails();
+    initializeChannelTabs();
 });
+
+const thumbnailQueues = new Map();
+const thumbnailTimers = new Map();
+const activeThumbnailRequests = new Set();
+let thumbnailObserver;
+
+function observeDeferredThumbnails(root = document) {
+    const placeholders = root.querySelectorAll
+        ? root.querySelectorAll('.media-thumbnail-placeholder:not([data-thumbnail-loaded])')
+        : [];
+    if (!placeholders.length) return;
+
+    if (!('IntersectionObserver' in window)) {
+        placeholders.forEach(enqueueThumbnail);
+        return;
+    }
+
+    if (!thumbnailObserver) {
+        thumbnailObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                thumbnailObserver.unobserve(entry.target);
+                enqueueThumbnail(entry.target);
+            });
+        }, { root: document.getElementById('messagesContainer'), rootMargin: '180px' });
+    }
+    placeholders.forEach(placeholder => thumbnailObserver.observe(placeholder));
+}
+
+function enqueueThumbnail(placeholder) {
+    if (placeholder.dataset.thumbnailQueued) return;
+    placeholder.dataset.thumbnailQueued = 'true';
+    const endpoint = `${channelApiBase()}/thumbnails`;
+    if (!thumbnailQueues.has(endpoint)) thumbnailQueues.set(endpoint, []);
+    thumbnailQueues.get(endpoint).push(placeholder);
+    scheduleThumbnailBatch(endpoint);
+}
+
+function scheduleThumbnailBatch(endpoint) {
+    if (thumbnailTimers.has(endpoint) || activeThumbnailRequests.has(endpoint)) return;
+    thumbnailTimers.set(endpoint, setTimeout(() => loadThumbnailBatch(endpoint), 50));
+}
+
+async function loadThumbnailBatch(endpoint) {
+    thumbnailTimers.delete(endpoint);
+    const queue = thumbnailQueues.get(endpoint) || [];
+    const batch = queue.splice(0, 8);
+    if (!batch.length) return;
+    activeThumbnailRequests.add(endpoint);
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message_ids: batch.map(element => Number(element.dataset.messageId))
+            })
+        });
+        if (!response.ok) throw new Error(`Thumbnail request failed: HTTP ${response.status}`);
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Thumbnail request failed');
+
+        batch.forEach(placeholder => {
+            placeholder.dataset.thumbnailLoaded = 'true';
+            const preview = result.previews[String(placeholder.dataset.messageId)];
+            if (!preview) return;
+            const image = document.createElement('img');
+            image.className = 'media-thumbnail';
+            image.alt = `${placeholder.dataset.mediaLabel || 'Media'} thumbnail`;
+            image.src = preview;
+            const iconClass = placeholder.querySelector('i')?.className || 'fas fa-paperclip';
+            image.onerror = () => {
+                placeholder.className = 'media-type-icon media-thumbnail-placeholder';
+                const fallback = document.createElement('i');
+                fallback.className = iconClass;
+                placeholder.replaceChildren(fallback);
+            };
+            placeholder.className = 'media-thumbnail-wrap';
+            placeholder.replaceChildren(image);
+            if (['VIDEO', 'ANIMATION', 'VIDEO_NOTE'].includes(placeholder.dataset.mediaType)) {
+                const play = document.createElement('span');
+                play.className = 'media-play-indicator';
+                play.setAttribute('aria-hidden', 'true');
+                play.innerHTML = '<i class="fas fa-play"></i>';
+                placeholder.appendChild(play);
+            }
+        });
+    } catch (error) {
+        batch.forEach(placeholder => { placeholder.dataset.thumbnailQueued = ''; });
+        showToast(`Could not load media previews: ${error.message}`, 'warning');
+    } finally {
+        activeThumbnailRequests.delete(endpoint);
+        if (queue.length) scheduleThumbnailBatch(endpoint);
+    }
+}
+
+function initializeChannelTabs() {
+    const channelTabs = document.getElementById('channelTabs');
+    if (!channelTabs) return;
+    loadMessages(1);
+    channelTabs.addEventListener('shown.bs.tab', event => {
+        const target = event.target.getAttribute('href');
+        if (target === '#tab-admins') loadAdmins();
+        if (target === '#tab-members' && document.getElementById('tab-members')?.dataset.loaded !== 'true') {
+            loadMembers(1);
+        }
+    });
+}
+
+async function loadAdmins() {
+    const container = document.getElementById('adminsContainer');
+    if (!container || container.dataset.loaded === 'true' || container.dataset.loading === 'true') return;
+    container.dataset.loading = 'true';
+    container.innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Loading administrators…</div>';
+    try {
+        const response = await fetch(`${channelApiBase()}/admins`);
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+        container.dataset.loaded = 'true';
+        const badge = document.getElementById('adminsCount');
+        if (badge) badge.textContent = result.count;
+        container.innerHTML = result.admins.length
+            ? `<div class="table-responsive"><table class="table table-hover align-middle mb-0">
+                <thead class="table-light"><tr><th>Admin</th><th>Username</th><th>Role</th><th>Title</th></tr></thead>
+                <tbody>${result.admins.map(admin => `
+                    <tr><td><div class="d-flex align-items-center gap-2">
+                        <div class="member-avatar">${escHtml((admin.name || '?')[0].toUpperCase())}</div>
+                        <span class="fw-semibold">${escHtml(admin.name)}</span>
+                        ${admin.is_bot ? '<span class="badge bg-info admin-badge">Bot</span>' : ''}
+                    </div></td><td>${admin.username
+                        ? `<a href="https://t.me/${escHtml(admin.username)}" target="_blank" rel="noopener">@${escHtml(admin.username)}</a>`
+                        : '<span class="text-muted">—</span>'}</td>
+                    <td>${String(admin.status).toUpperCase().includes('OWNER')
+                        ? '<span class="badge-owner">👑 Owner</span>'
+                        : '<span class="badge-admin">🛡 Admin</span>'}</td>
+                    <td>${escHtml(admin.custom_title || '—')}</td></tr>`).join('')}
+                </tbody></table></div>`
+            : '<div class="text-center text-muted py-5"><i class="fas fa-shield-alt fa-2x mb-2"></i><p>No admin data available.</p></div>';
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-warning">Could not load administrators: ${escHtml(error.message)}
+            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="loadAdmins()">Retry</button></div>`;
+    } finally {
+        container.dataset.loading = 'false';
+    }
+}
 
 function loadDeferredPhotos() {
     const images = [...document.querySelectorAll('img[data-photo-chat-id]')];
@@ -426,6 +572,7 @@ async function loadMembers(page, btnEl) {
     const tbody  = document.getElementById('membersTableBody');
     const status = document.getElementById('membersStatus');
     if (!tbody) return;
+    if (status) status.textContent = `Loading page ${page}…`;
 
     try {
         const res = await fetch(`${channelApiBase()}/members?page=${page}&limit=${membersLimit}`);
@@ -454,6 +601,8 @@ async function loadMembers(page, btnEl) {
             : '<tr><td colspan="3" class="text-center text-muted py-4">No members found.</td></tr>';
 
         membersPage = page;
+        const membersPane = document.getElementById('tab-members');
+        if (membersPane) membersPane.dataset.loaded = 'true';
         if (status) status.textContent = `Page ${page} · Showing ${data.members.length} members`;
 
         const prevBtn = document.getElementById('membersPrevBtn');
@@ -461,6 +610,7 @@ async function loadMembers(page, btnEl) {
         if (prevBtn) prevBtn.disabled = page <= 1;
         if (nextBtn) nextBtn.disabled = data.members.length < membersLimit;
     } catch (e) {
+        if (status) status.textContent = 'Could not load members. Use Refresh to retry.';
         showToast('Failed to load members: ' + e.message, 'danger');
     } finally {
         if (btnEl) setLoading(btnEl, false);
@@ -488,7 +638,13 @@ function renderChatMessage(msg) {
                     ? '<span class="media-play-indicator" aria-hidden="true"><i class="fas fa-play"></i></span>'
                     : ''}
            </div>`
-        : `<div class="media-type-icon"><i class="fas ${mediaIcon}"></i></div>`;
+        : `<div class="media-type-icon media-thumbnail-placeholder"
+                data-message-id="${messageId}"
+                data-media-type="${escHtml(mediaType)}"
+                data-media-label="${mediaLabel}"
+                aria-label="Load ${mediaLabel} preview">
+                <i class="fas ${mediaIcon}"></i>
+           </div>`;
     const media = msg.has_media
         ? `<div class="chat-media-preview">${mediaPreview}
                 <div class="media-details">
@@ -539,6 +695,7 @@ async function loadMessages(page, btnEl) {
     const container = document.getElementById('messagesContainer');
     const status    = document.getElementById('messagesStatus');
     if (!container) return;
+    if (status) status.textContent = 'Loading messages…';
 
     try {
         const res = await fetch(`${channelApiBase()}/messages?page=${page}&limit=${messagesLimit}`);
@@ -559,12 +716,18 @@ async function loadMessages(page, btnEl) {
             if (page === 1) container.scrollTop = container.scrollHeight;
         }
 
+        observeDeferredThumbnails(container);
         messagesPage = page;
         if (status) status.textContent = `${container.querySelectorAll('.chat-message').length} messages loaded`;
 
         const nextBtn = document.getElementById('messagesNextBtn');
         if (nextBtn) nextBtn.disabled = data.messages.length < messagesLimit;
     } catch (e) {
+        if (status) status.textContent = 'Could not load messages.';
+        if (page === 1 && !container.querySelector('.chat-message')) {
+            container.innerHTML = `<div class="alert alert-warning">Could not load chat history: ${escHtml(e.message)}
+                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="loadMessages(1, this)">Retry</button></div>`;
+        }
         showToast('Failed to load messages: ' + e.message, 'danger');
     } finally {
         if (btnEl) setLoading(btnEl, false);

@@ -25,19 +25,12 @@
         <i class="fas fa-arrow-left"></i>
     </a>
     <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
-        {% if photo %}
-        <img src="{{ photo }}" alt="{{ info.title }}"
-             class="channel-photo"
-             onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-        <div class="channel-photo channel-photo-fallback" hidden>
+        <div class="channel-photo channel-photo-fallback" data-photo-fallback>
             {{ (info.title or "?")[0]|upper }}
         </div>
-        {% else %}
-        <div class="channel-photo" style="background:rgba(255,255,255,.2);
-                    display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:800;">
-            {{ (info.title or "?")[0]|upper }}
-        </div>
-        {% endif %}
+        <img class="channel-photo" data-photo-chat-id="{{ channel_id }}"
+             data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
+             alt="{{ info.title }}" hidden>
         <div class="channel-title">
             <h1 class="h5 fw-bold mb-1 text-truncate">{{ info.title or "Unknown" }}</h1>
             <div class="small opacity-90 text-truncate">
@@ -64,7 +57,7 @@
     <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#tab-admins" role="tab">
             <i class="fas fa-shield-alt me-1"></i>Admins
-            <span class="badge bg-secondary ms-1">{{ admins|length }}</span>
+            <span class="badge bg-secondary ms-1" id="adminsCount">{{ admins|length }}</span>
         </a>
     </li>
     <li class="nav-item">
@@ -165,70 +158,24 @@
 
     {# ── Admins Tab ── #}
     <div class="tab-pane fade" id="tab-admins" role="tabpanel">
-        {% if errors.get("admins") %}
-        <div class="alert alert-warning" role="alert">Could not load administrators: {{ errors.get("admins") }}</div>
-        {% elif info.type not in ("channel", "supergroup", "group") %}
+        {% if info.type not in ("channel", "supergroup", "group") %}
         <div class="text-center text-muted py-5">
             <i class="fas fa-user-shield fa-2x mb-2"></i>
             <p>Administrator lists are available for groups and channels.</p>
         </div>
-        {% endif %}
-        {% if admins %}
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Admin</th>
-                        <th>Username</th>
-                        <th>Role</th>
-                        <th>Title</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for a in admins %}
-                <tr>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="member-avatar">{{ (a.name or "?")[0]|upper }}</div>
-                            <span class="fw-semibold">{{ a.name }}</span>
-                            {% if a.is_bot %}
-                            <span class="badge bg-info admin-badge">Bot</span>
-                            {% endif %}
-                        </div>
-                    </td>
-                    <td>
-                        {% if a.username %}
-                        <a href="https://t.me/{{ a.username }}" target="_blank">@{{ a.username }}</a>
-                        {% else %}
-                        <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if "OWNER" in a.status|upper %}
-                        <span class="badge-owner">👑 Owner</span>
-                        {% else %}
-                        <span class="badge-admin">🛡 Admin</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ a.custom_title or "—" }}</td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% elif not errors.get("admins") and info.type in ("channel", "supergroup", "group") %}
-        <div class="text-center text-muted py-5">
-            <i class="fas fa-shield-alt fa-2x mb-2"></i>
-            <p>No admin data available.</p>
+        {% else %}
+        <div id="adminsContainer" data-loaded="false">
+            <div class="text-center text-muted py-5" role="status">
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                Admin list loads when this tab opens.
+            </div>
         </div>
         {% endif %}
     </div>
 
     {# ── Members Tab ── #}
     <div class="tab-pane fade" id="tab-members" role="tabpanel">
-        {% if errors.get("members") %}
-        <div class="alert alert-warning" role="alert">Could not load members: {{ errors.get("members") }}</div>
-        {% elif info.type not in ("channel", "supergroup", "group") %}
+        {% if info.type not in ("channel", "supergroup", "group") %}
         <div class="text-center text-muted py-5">
             <i class="fas fa-users fa-2x mb-2"></i>
             <p>Member lists are available for groups and channels.</p>
@@ -283,9 +230,7 @@
                     onclick="membersNext()">
                 Next <i class="fas fa-chevron-right"></i>
             </button>
-            <span id="membersStatus" class="status-text">
-                Showing {{ members|length }} members (initial load)
-            </span>
+            <span id="membersStatus" class="status-text">Members load when this tab opens.</span>
         </div>
         {% endif %}
     </div>
@@ -300,7 +245,7 @@
                     onclick="messagesNext()" {% if messages|length < 30 or errors.get("messages") %}disabled{% endif %}>
                 <i class="fas fa-arrow-up me-1"></i>Load older
             </button>
-            <span id="messagesStatus" class="small text-muted">{{ messages|length }} recent messages</span>
+            <span id="messagesStatus" class="small text-muted">{% if messages %}{{ messages|length }} recent messages{% else %}Loading recent messages…{% endif %}</span>
             <div class="channel-toolbar">
                 <button class="btn btn-sm btn-outline-secondary" onclick="loadMessages(1, this)" title="Refresh chat" aria-label="Refresh chat">
                     <i class="fas fa-sync-alt"></i>
@@ -350,7 +295,13 @@
                     {% endif %}
                 </div>
                 {% else %}
-                <div class="media-type-icon"><i class="fas {{ msg.media_icon }}"></i></div>
+                <div class="media-type-icon media-thumbnail-placeholder"
+                     data-message-id="{{ msg.id }}"
+                     data-media-type="{{ msg.media_type or '' }}"
+                     data-media-label="{{ msg.media_label or 'Media' }}"
+                     aria-label="Load {{ msg.media_label or 'media' }} preview">
+                    <i class="fas {{ msg.media_icon }}"></i>
+                </div>
                 {% endif %}
                 <div class="media-details">
                     <span class="media-type-label">{{ msg.media_label or "Media" }}</span>
@@ -372,8 +323,9 @@
             {% endif %}
         </article>
         {% else %}
-        <div class="text-center text-muted py-5">
-            <i class="fas fa-comment fa-2x mb-2"></i><p>No messages available.</p>
+        <div class="text-center text-muted py-5" role="status">
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            Loading recent messages…
         </div>
         {% endfor %}
         </div>

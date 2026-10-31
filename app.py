@@ -109,7 +109,7 @@ def rate_limit(f):
 
 _cache: dict[str, tuple[float, object]] = {}
 _cache_lock = threading.Lock()
-_CACHE_TTL = 300  # 5 minutes
+_CACHE_TTL = 600  # 10 minutes
 
 
 def cache_get(key: str):
@@ -124,13 +124,32 @@ def cache_get(key: str):
 
 
 def cache_set(key: str, data):
+    now = time.monotonic()
     with _cache_lock:
-        _cache[key] = (time.monotonic(), data)
+        expired = [
+            cached_key for cached_key, (created_at, _) in _cache.items()
+            if now - created_at >= _CACHE_TTL
+        ]
+        for cached_key in expired:
+            del _cache[cached_key]
+        _cache[key] = (now, data)
 
 
 def cache_bust(key: str):
     with _cache_lock:
         _cache.pop(key, None)
+
+
+def cache_bust_prefix(prefix: str):
+    with _cache_lock:
+        for key in [key for key in _cache if key.startswith(prefix)]:
+            del _cache[key]
+
+
+def cache_bust_channel(unique_link: str, channel_id: int):
+    key = f"channel:{unique_link}:{channel_id}"
+    cache_bust(key)
+    cache_bust_prefix(f"{key}:")
 
 
 # ─── Security Headers ─────────────────────────────────────────────────────────
@@ -317,7 +336,7 @@ def channel_view(unique_link, channel_id):
     data = cache_get(cache_key)
     if data is None:
         try:
-            data = telegram_client.get_channel_full(session_string, channel_id)
+            data = telegram_client.get_channel_preview(session_string, channel_id)
             if not data.get("errors"):
                 cache_set(cache_key, data)
         except Exception:
@@ -364,11 +383,14 @@ def profile(unique_link):
     models.update_last_accessed(unique_link)
     session_string = session["session_string"]
 
-    try:
-        user_info = telegram_client.get_user_info(session_string)
-    except Exception as e:
-        logger.error("Failed to get profile for unique_link=%s: %s", unique_link, e)
-        user_info = {}
+    user_info = cache_get(f"user_info:{unique_link}")
+    if user_info is None:
+        try:
+            user_info = telegram_client.get_user_info(session_string)
+            cache_set(f"user_info:{unique_link}", user_info)
+        except Exception as e:
+            logger.error("Failed to get profile for unique_link=%s: %s", unique_link, e)
+            user_info = {}
 
     return render_template(
         "profile.html",
@@ -390,11 +412,14 @@ def web_logout(unique_link):
     if not session:
         return render_template("404.html"), 404
 
+    telegram_client.clear_peer_cache(session["session_string"])
     models.delete_session_by_unique_id(unique_link)
     models.delete_user_session_by_unique_id(unique_link)
 
     cache_bust(f"user_info:{unique_link}")
     cache_bust(f"dialogs:{unique_link}")
+    cache_bust_prefix(f"chat_photo:{unique_link}:")
+    cache_bust_prefix(f"channel:{unique_link}:")
 
     logger.info("Web logout: unique_link=%s", unique_link)
     return render_template(
@@ -414,6 +439,7 @@ def channel_invite(unique_link, channel_id):
         return err
     try:
         invite_link = telegram_client.create_invite_link(session["session_string"], channel_id)
+        cache_bust_channel(unique_link, channel_id)
         logger.info("Invite link created: channel=%s unique_link=%s", channel_id, unique_link)
         return jsonify({"success": True, "invite_link": invite_link})
     except Exception as e:
@@ -437,6 +463,7 @@ def channel_revoke_invite(unique_link, channel_id):
 
     try:
         telegram_client.revoke_invite_link(session["session_string"], channel_id, invite_link)
+        cache_bust_channel(unique_link, channel_id)
         return jsonify({"success": True})
     except Exception as e:
         logger.error("Failed to revoke invite link: %s", e)
@@ -470,6 +497,7 @@ def channel_transfer(unique_link, channel_id):
         telegram_client.transfer_ownership(
             session["session_string"], channel_id, target_user_id, password
         )
+        cache_bust_channel(unique_link, channel_id)
         logger.info(
             "Ownership transferred: channel=%s -> user=%s by unique_link=%s",
             channel_id, target_user_id, unique_link,
@@ -507,12 +535,35 @@ def channel_delete_message(unique_link, channel_id):
     try:
         message_id = int(message_id)
         telegram_client.delete_message(session["session_string"], channel_id, message_id)
-        cache_bust(f"channel:{unique_link}:{channel_id}")
+        cache_bust_channel(unique_link, channel_id)
         logger.info("Message %s deleted in channel=%s", message_id, channel_id)
         return jsonify({"success": True})
     except Exception as e:
         logger.error("Failed to delete message %s: %s", message_id, e)
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── AJAX: Channel administrators ──────────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/admins", methods=["GET"])
+@rate_limit
+def channel_admins_ajax(unique_link, channel_id):
+    session, err = _get_session_or_fail(unique_link)
+    if err:
+        return err
+
+    cache_key = f"channel:{unique_link}:{channel_id}:admins"
+    admins = cache_get(cache_key)
+    if admins is None:
+        try:
+            admins = telegram_client.get_channel_admins(
+                session["session_string"], channel_id
+            )
+            cache_set(cache_key, admins)
+        except Exception as e:
+            logger.error("Admins fetch error for channel=%s: %s", channel_id, e)
+            return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, "admins": admins, "count": len(admins)})
 
 
 # ─── AJAX: Members pagination ─────────────────────────────────────────────────
@@ -531,22 +582,76 @@ def channel_members_ajax(unique_link, channel_id):
         return jsonify({"success": False, "error": "page and limit must be integers"}), 400
     offset = (page - 1) * limit
 
-    try:
-        result = telegram_client.get_channel_members_page(
-            session["session_string"], channel_id, limit=limit, offset=offset
-        )
-        members = channel_utils.format_members_list(result.get("members", []))
-        return jsonify({
-            "success": True,
-            "members": members,
-            "count": len(members),
-            "page": page,
-            "limit": limit,
-            "offset": offset,
-        })
-    except Exception as e:
-        logger.error("Members fetch error for channel=%s: %s", channel_id, e)
-        return jsonify({"success": False, "error": str(e)}), 400
+    cache_key = f"channel:{unique_link}:{channel_id}:members:{page}:{limit}"
+    result = cache_get(cache_key)
+    if result is None:
+        try:
+            result = telegram_client.get_channel_members_page(
+                session["session_string"], channel_id, limit=limit, offset=offset
+            )
+            cache_set(cache_key, result)
+        except Exception as e:
+            logger.error("Members fetch error for channel=%s: %s", channel_id, e)
+            return jsonify({"success": False, "error": str(e)}), 400
+
+    members = channel_utils.format_members_list(result.get("members", []))
+    return jsonify({
+        "success": True,
+        "members": members,
+        "count": len(members),
+        "page": page,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+# ─── AJAX: Deferred message thumbnails ────────────────────────────────────────
+
+@app.route("/channel/<unique_link>/<int(signed=True):channel_id>/thumbnails", methods=["POST"])
+@rate_limit
+def channel_thumbnails_ajax(unique_link, channel_id):
+    session, err = _get_session_or_fail(unique_link)
+    if err:
+        return err
+
+    payload = request.get_json(silent=True)
+    message_ids = payload.get("message_ids") if isinstance(payload, dict) else None
+    if (
+        not isinstance(message_ids, list)
+        or not message_ids
+        or len(message_ids) > 8
+        or any(type(message_id) is not int or message_id <= 0 for message_id in message_ids)
+    ):
+        return jsonify({"success": False, "error": "Provide between 1 and 8 valid message IDs."}), 400
+
+    previews = {}
+    missing = []
+    for message_id in dict.fromkeys(message_ids):
+        cache_key = f"channel:{unique_link}:{channel_id}:thumbnail:{message_id}"
+        cached_preview = cache_get(cache_key)
+        if cached_preview is None:
+            missing.append(message_id)
+        elif cached_preview:
+            previews[str(message_id)] = cached_preview
+
+    if missing:
+        try:
+            loaded_previews = telegram_client.get_channel_message_thumbnails(
+                session["session_string"], channel_id, missing
+            )
+            for message_id in missing:
+                preview = loaded_previews.get(message_id, "")
+                cache_set(
+                    f"channel:{unique_link}:{channel_id}:thumbnail:{message_id}",
+                    preview,
+                )
+                if preview:
+                    previews[str(message_id)] = preview
+        except Exception as e:
+            logger.error("Thumbnail fetch error for channel=%s: %s", channel_id, e)
+            return jsonify({"success": False, "error": "Could not load message thumbnails."}), 400
+
+    return jsonify({"success": True, "previews": previews})
 
 
 # ─── AJAX: Messages pagination ────────────────────────────────────────────────
@@ -565,21 +670,24 @@ def channel_messages_ajax(unique_link, channel_id):
         return jsonify({"success": False, "error": "page and limit must be integers"}), 400
     offset = (page - 1) * limit
 
-    try:
-        raw = telegram_client.get_channel_messages_page(
-            session["session_string"], channel_id, limit=limit, offset=offset
-        )
-        messages = channel_utils.format_messages_list(raw)
-        return jsonify({
-            "success": True,
-            "messages": messages,
-            "count": len(messages),
-            "page": page,
-            "limit": limit,
-        })
-    except Exception as e:
-        logger.error("Messages fetch error for channel=%s: %s", channel_id, e)
-        return jsonify({"success": False, "error": str(e)}), 400
+    cache_key = f"channel:{unique_link}:{channel_id}:messages:{page}:{limit}"
+    messages = cache_get(cache_key)
+    if messages is None:
+        try:
+            raw = telegram_client.get_channel_messages_page(
+                session["session_string"], channel_id, limit=limit, offset=offset
+            )
+            messages = channel_utils.format_messages_list(raw)
+            cache_set(cache_key, messages)
+        except Exception as e:
+            logger.error("Messages fetch error for channel=%s: %s", channel_id, e)
+            return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({
+        "success": True,
+        "messages": messages,
+        "count": len(messages),
+        "page": page,
+    })
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

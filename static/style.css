@@ -206,6 +206,7 @@ a:hover { color: #075f90; }
 .chat-media-preview { display: flex; align-items: center; gap: .75rem; min-width: min(100%, 300px); margin: .45rem 0; padding: .5rem; border: 1px solid #e8eef2; border-radius: 11px; background: #f7fafc; }
 .media-thumbnail-wrap { position: relative; flex: 0 0 auto; overflow: hidden; width: 104px; height: 76px; border-radius: 8px; background: #eaf0f4; }
 .media-thumbnail { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-type-icon.media-thumbnail-placeholder { width: 104px; height: 76px; border-radius: 8px; }
 .media-play-indicator { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(15,35,48,.18); color: #fff; font-size: 1.1rem; text-shadow: 0 1px 5px rgba(0,0,0,.5); }
 .media-type-icon { display: grid; flex: 0 0 auto; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: #e8f4fb; color: #1683bc; font-size: 1.15rem; }
 .media-details { display: flex; min-width: 0; flex-direction: column; gap: .12rem; }
@@ -271,6 +272,7 @@ footer { padding: 1.25rem 0; border-top: 1px solid var(--tg-border); background:
     .message-action-button { width: 34px; height: 34px; }
     .chat-media-preview { min-width: min(100%, 240px); }
     .media-thumbnail-wrap { width: 82px; height: 64px; }
+    .media-type-icon.media-thumbnail-placeholder { width: 82px; height: 64px; }
     .media-name { max-width: 160px; }
 }
 

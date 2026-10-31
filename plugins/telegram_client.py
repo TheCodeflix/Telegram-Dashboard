@@ -2,6 +2,9 @@ import logging
 import asyncio
 import base64
 import functools
+import hashlib
+import threading
+import time
 import config
 from pyrogram import Client, raw
 from pyrogram.enums import ChatType
@@ -15,6 +18,65 @@ API_HASH = config.API_HASH
 
 _MAX_FLOOD_WAIT = 30   # cap how long we'll sleep on a single FloodWait
 _MAX_RETRIES = 3
+_PEER_CACHE_TTL = 600
+_peer_cache: dict[tuple[str, int], tuple[float, int, str, int]] = {}
+_peer_cache_lock = threading.Lock()
+
+
+def _session_peer_namespace(session_string: str) -> str:
+    return hashlib.sha256(session_string.encode("utf-8")).hexdigest()
+
+
+def clear_peer_cache(session_string: str) -> None:
+    namespace = _session_peer_namespace(session_string)
+    with _peer_cache_lock:
+        for key in [key for key in _peer_cache if key[0] == namespace]:
+            del _peer_cache[key]
+
+
+async def _remember_chat_peer(client: Client, chat_id: int, namespace: str) -> None:
+    try:
+        peer = await client.storage.get_peer_by_id(chat_id)
+    except (KeyError, ValueError):
+        return
+
+    if isinstance(peer, raw.types.InputPeerUser):
+        peer_type, access_hash = "user", peer.access_hash
+    elif isinstance(peer, raw.types.InputPeerChat):
+        peer_type, access_hash = "group", 0
+    elif isinstance(peer, raw.types.InputPeerChannel):
+        peer_type, access_hash = "channel", peer.access_hash
+    else:
+        return
+
+    now = time.monotonic()
+    with _peer_cache_lock:
+        expired = [
+            key for key, (expires_at, _, _, _) in _peer_cache.items()
+            if now >= expires_at
+        ]
+        for key in expired:
+            del _peer_cache[key]
+        _peer_cache[(namespace, chat_id)] = (
+            now + _PEER_CACHE_TTL, chat_id, peer_type, access_hash
+        )
+
+
+async def _restore_chat_peer(client: Client, chat_id: int, namespace: str) -> bool:
+    key = (namespace, chat_id)
+    now = time.monotonic()
+    with _peer_cache_lock:
+        cached = _peer_cache.get(key)
+        if cached and now < cached[0]:
+            _, peer_id, peer_type, access_hash = cached
+        else:
+            _peer_cache.pop(key, None)
+            return False
+
+    await client.storage.update_peers([
+        (peer_id, access_hash, peer_type, None, None)
+    ])
+    return True
 
 
 # ─── Retry decorator ─────────────────────────────────────────────────────────
@@ -71,7 +133,9 @@ async def _get_user_info(client: Client, me=None) -> dict:
 
 
 @_retry_flood
-async def _get_all_dialogs(client: Client, limit: int = 0, me=None) -> list:
+async def _get_all_dialogs(
+    client: Client, limit: int = 0, me=None, peer_cache_namespace: str | None = None
+) -> list:
     if me is None:
         me = await client.get_me()
     role_semaphore = asyncio.Semaphore(4)
@@ -111,6 +175,8 @@ async def _get_all_dialogs(client: Client, limit: int = 0, me=None) -> list:
             return None
 
     async for dialog in client.get_dialogs(limit=limit):
+        if peer_cache_namespace:
+            await _remember_chat_peer(client, dialog.chat.id, peer_cache_namespace)
         tasks.append(asyncio.create_task(build_dialog(dialog.chat)))
         if len(tasks) == 4:
             entries.extend(await asyncio.gather(*tasks))
@@ -121,7 +187,7 @@ async def _get_all_dialogs(client: Client, limit: int = 0, me=None) -> list:
 
 
 @_retry_flood
-async def _get_channel_info(client: Client, channel_id: int) -> dict:
+async def _get_channel_info(client: Client, channel_id: int, include_photo: bool = True) -> dict:
     chat = await client.get_chat(channel_id)
     return {
         "id": chat.id,
@@ -134,7 +200,7 @@ async def _get_channel_info(client: Client, channel_id: int) -> dict:
         "is_scam": getattr(chat, "is_scam", False),
         "linked_chat": getattr(chat, "linked_chat", None),
         "invite_link": getattr(chat, "invite_link", None) or "",
-        "photo": await _get_chat_photo(client, chat),
+        "photo": await _get_chat_photo(client, chat) if include_photo else None,
     }
 
 
@@ -186,7 +252,7 @@ async def _get_channel_messages(client: Client, channel_id: int,
             sender_name = _full_name(msg.from_user)
         elif msg.sender_chat:
             sender_name = getattr(msg.sender_chat, "title", "") or ""
-        media_data = await _get_message_media_data(client, msg)
+        media_data = await _get_message_media_data(client, msg, include_preview=False)
         messages.append({
             "id": msg.id,
             "text": msg.text or msg.caption or "",
@@ -199,6 +265,34 @@ async def _get_channel_messages(client: Client, channel_id: int,
         })
     messages.reverse()
     return messages
+
+
+@_retry_flood
+async def _get_channel_message_thumbnails(
+    client: Client, channel_id: int, message_ids: list[int]
+) -> dict[int, str]:
+    messages = await client.get_messages(channel_id, message_ids)
+    if not isinstance(messages, list):
+        messages = [messages]
+    semaphore = asyncio.Semaphore(3)
+
+    async def get_preview(message):
+        if not message or not getattr(message, "media", None):
+            return None
+        async with semaphore:
+            media_data = await _get_message_media_data(
+                client, message, include_preview=True
+            )
+        return message.id, media_data.get("media_preview")
+
+    results = await asyncio.gather(*(get_preview(message) for message in messages))
+    previews = {}
+    for result in results:
+        if result:
+            message_id, preview = result
+            if preview:
+                previews[message_id] = preview
+    return previews
 
 
 @_retry_flood
@@ -310,7 +404,7 @@ async def _get_chat_photos(client: Client, chat_ids: list[int]) -> dict[int, str
     return photos
 
 
-async def _get_message_media_data(client: Client, message) -> dict:
+async def _get_message_media_data(client: Client, message, include_preview: bool = True) -> dict:
     media_type = getattr(message.media, "name", "") if message.media else ""
     media_type = media_type or (str(message.media).split(".")[-1] if message.media else "")
     media_type = media_type.upper()
@@ -340,7 +434,7 @@ async def _get_message_media_data(client: Client, message) -> dict:
         (thumb for thumb in thumbnails if getattr(thumb, "file_size", 0) <= 96_000),
         key=lambda thumb: getattr(thumb, "file_size", 0),
     )
-    if candidates:
+    if candidates and include_preview:
         thumbnail = candidates[-1]
         try:
             image = await client.download_media(thumbnail.file_id, in_memory=True)
@@ -414,10 +508,13 @@ def _media_label(media_type: str) -> str:
 
 # ─── Sync wrapper (one fresh event loop per call) ────────────────────────────
 
-async def _cache_chat_peer(client: Client, chat_id: int) -> None:
-    """Load a chat from the account dialogs so numeric IDs resolve in this client."""
+async def _cache_chat_peer(client: Client, chat_id: int, namespace: str) -> None:
+    if await _restore_chat_peer(client, chat_id, namespace):
+        return
+
     async for dialog in client.get_dialogs(limit=0):
         if dialog.chat.id == chat_id:
+            await _remember_chat_peer(client, chat_id, namespace)
             return
     raise ValueError(
         f"Chat {chat_id} is not available in this Telegram account's dialogs."
@@ -434,7 +531,9 @@ def run_in_session(session_string: str, coro_factory, chat_id: int | None = None
         try:
             await client.start()
             if chat_id is not None:
-                await _cache_chat_peer(client, chat_id)
+                await _cache_chat_peer(
+                    client, chat_id, _session_peer_namespace(session_string)
+                )
             return await coro_factory(client)
         finally:
             try:
@@ -451,14 +550,24 @@ def get_user_info(session_string: str) -> dict:
 
 
 def get_all_dialogs(session_string: str, limit: int = 0) -> list:
-    return run_in_session(session_string, lambda c: _get_all_dialogs(c, limit))
+    namespace = _session_peer_namespace(session_string)
+    return run_in_session(
+        session_string,
+        lambda client: _get_all_dialogs(
+            client, limit, peer_cache_namespace=namespace
+        ),
+    )
 
 
 def get_dashboard_data(session_string: str) -> tuple[dict, list]:
     async def _dashboard_data(client):
         me = await client.get_me()
         user_info = await _get_user_info(client, me)
-        dialogs = await _get_all_dialogs(client, me=me)
+        dialogs = await _get_all_dialogs(
+            client,
+            me=me,
+            peer_cache_namespace=_session_peer_namespace(session_string),
+        )
         return user_info, dialogs
 
     return run_in_session(session_string, _dashboard_data)
@@ -502,6 +611,38 @@ def get_channel_full(session_string: str, channel_id: int) -> dict:
             "errors": errors,
         }
     return run_in_session(session_string, _all, chat_id=channel_id)
+
+
+def get_channel_preview(session_string: str, channel_id: int) -> dict:
+    async def _preview(client):
+        info = await _get_channel_info(client, channel_id, include_photo=False)
+        return {
+            "info": info,
+            "admins": [],
+            "members": [],
+            "messages": [],
+            "photo": None,
+            "errors": {},
+        }
+
+    return run_in_session(session_string, _preview, chat_id=channel_id)
+
+
+def get_channel_admins(session_string: str, channel_id: int) -> list:
+    return run_in_session(
+        session_string, lambda client: _get_channel_admins(client, channel_id),
+        chat_id=channel_id,
+    )
+
+
+def get_channel_message_thumbnails(
+    session_string: str, channel_id: int, message_ids: list[int]
+) -> dict[int, str]:
+    return run_in_session(
+        session_string,
+        lambda client: _get_channel_message_thumbnails(client, channel_id, message_ids),
+        chat_id=channel_id,
+    )
 
 
 def get_channel_members_page(session_string: str, channel_id: int,
