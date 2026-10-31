@@ -273,7 +273,17 @@ async def _get_chat_photo(client: Client, chat_id: int):
 
 # ─── Sync wrapper (one fresh event loop per call) ────────────────────────────
 
-def run_in_session(session_string: str, coro_factory):
+async def _cache_chat_peer(client: Client, chat_id: int) -> None:
+    """Load a chat from the account dialogs so numeric IDs resolve in this client."""
+    async for dialog in client.get_dialogs(limit=0):
+        if dialog.chat.id == chat_id:
+            return
+    raise ValueError(
+        f"Chat {chat_id} is not available in this Telegram account's dialogs."
+    )
+
+
+def run_in_session(session_string: str, coro_factory, chat_id: int | None = None):
     """
     Creates a Pyrogram client, connects, runs coro_factory(client),
     disconnects, and returns the result. Always runs in a brand-new event loop.
@@ -282,6 +292,8 @@ def run_in_session(session_string: str, coro_factory):
         client = create_client(session_string)
         try:
             await client.start()
+            if chat_id is not None:
+                await _cache_chat_peer(client, chat_id)
             return await coro_factory(client)
         finally:
             try:
@@ -302,7 +314,9 @@ def get_all_dialogs(session_string: str, limit: int = 0) -> list:
 
 
 def get_channel_info(session_string: str, channel_id: int) -> dict:
-    return run_in_session(session_string, lambda c: _get_channel_info(c, channel_id))
+    return run_in_session(
+        session_string, lambda c: _get_channel_info(c, channel_id), chat_id=channel_id
+    )
 
 
 def get_channel_full(session_string: str, channel_id: int) -> dict:
@@ -336,7 +350,7 @@ def get_channel_full(session_string: str, channel_id: int) -> dict:
             "photo": await _get_chat_photo(client, channel_id),
             "errors": errors,
         }
-    return run_in_session(session_string, _all)
+    return run_in_session(session_string, _all, chat_id=channel_id)
 
 
 def get_channel_members_page(session_string: str, channel_id: int,
@@ -344,6 +358,7 @@ def get_channel_members_page(session_string: str, channel_id: int,
     return run_in_session(
         session_string,
         lambda c: _get_channel_members(c, channel_id, limit=limit, offset=offset),
+        chat_id=channel_id,
     )
 
 
@@ -352,11 +367,14 @@ def get_channel_messages_page(session_string: str, channel_id: int,
     return run_in_session(
         session_string,
         lambda c: _get_channel_messages(c, channel_id, limit=limit, offset=offset),
+        chat_id=channel_id,
     )
 
 
 def get_pinned_messages(session_string: str, channel_id: int) -> list:
-    return run_in_session(session_string, lambda c: _get_pinned_messages(c, channel_id))
+    return run_in_session(
+        session_string, lambda c: _get_pinned_messages(c, channel_id), chat_id=channel_id
+    )
 
 
 def create_invite_link(session_string: str, channel_id: int,
@@ -364,6 +382,7 @@ def create_invite_link(session_string: str, channel_id: int,
     return run_in_session(
         session_string,
         lambda c: _create_invite_link(c, channel_id, expire_date, member_limit),
+        chat_id=channel_id,
     )
 
 
@@ -371,6 +390,7 @@ def revoke_invite_link(session_string: str, channel_id: int, invite_link: str) -
     return run_in_session(
         session_string,
         lambda c: _revoke_invite_link(c, channel_id, invite_link),
+        chat_id=channel_id,
     )
 
 
@@ -378,6 +398,7 @@ def delete_message(session_string: str, channel_id: int, message_id: int) -> boo
     return run_in_session(
         session_string,
         lambda c: _delete_message(c, channel_id, message_id),
+        chat_id=channel_id,
     )
 
 
@@ -386,11 +407,14 @@ def transfer_ownership(session_string: str, channel_id: int,
     return run_in_session(
         session_string,
         lambda c: _transfer_ownership(c, channel_id, target_user_id, password),
+        chat_id=channel_id,
     )
 
 
 def get_chat_photo(session_string: str, chat_id: int):
-    return run_in_session(session_string, lambda c: _get_chat_photo(c, chat_id))
+    return run_in_session(
+        session_string, lambda c: _get_chat_photo(c, chat_id), chat_id=chat_id
+    )
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────

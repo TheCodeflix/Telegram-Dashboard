@@ -284,9 +284,19 @@ def channel_view(unique_link, channel_id):
             data = telegram_client.get_channel_full(session_string, channel_id)
             if not data.get("errors"):
                 cache_set(cache_key, data)
-        except Exception as e:
-            logger.error("Failed to fetch channel %s for unique_link=%s: %s", channel_id, unique_link, e)
-            return render_template("500.html"), 503
+        except Exception:
+            logger.exception(
+                "Failed to fetch chat %s for unique_link=%s",
+                channel_id, unique_link,
+            )
+            return render_template(
+                "error.html",
+                title="Could not open this chat",
+                message=(
+                    "Telegram could not load this chat for the current session. "
+                    "Return to the dashboard, refresh your chats, and try again."
+                ),
+            ), 503
 
     members = channel_utils.format_members_list(data.get("members", []))
     messages = channel_utils.format_messages_list(data.get("messages", []))
