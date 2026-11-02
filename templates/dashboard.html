@@ -141,6 +141,60 @@
             </a>
         </div>
     </section>
+
+    <section id="chat-view" class="telegram-chat-view" aria-label="Chat history"
+             data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}" hidden>
+        <header class="telegram-chat-header">
+            <div class="telegram-chat-header-identity">
+                <button id="back-to-list-btn" class="telegram-back-button" type="button"
+                        aria-label="Back to chats">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <span id="chat-header-avatar" class="telegram-chat-avatar-wrap">
+                    <span class="telegram-chat-avatar chat-header-avatar-fallback" data-photo-fallback>?</span>
+                    <img class="telegram-chat-avatar chat-header-avatar-image" data-photo-chat-id=""
+                         alt="" hidden>
+                </span>
+                <span class="telegram-chat-header-copy">
+                    <strong id="chat-header-name"></strong>
+                    <small id="chat-header-status">Loading chat…</small>
+                </span>
+            </div>
+            <div class="telegram-chat-menu-wrap">
+                <button id="chat-menu-btn" class="telegram-chat-menu-button" type="button"
+                        aria-label="Chat actions" aria-expanded="false">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                </button>
+                <div id="chat-menu-dropdown" class="telegram-chat-menu" hidden>
+                    <button class="chat-menu-item" type="button" data-action="members">
+                        <i class="fa-solid fa-users"></i><span>Members</span>
+                    </button>
+                    <button class="chat-menu-item" type="button" data-action="invite">
+                        <i class="fa-solid fa-link"></i><span>Invite Link</span>
+                    </button>
+                    <button class="chat-menu-item" type="button" data-action="ownership">
+                        <i class="fa-solid fa-crown"></i><span>Transfer Ownership</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+        <div id="chat-messages-container" class="telegram-chat-messages" aria-live="polite">
+            <div class="telegram-chat-loading" role="status">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                <span>Loading chat history…</span>
+            </div>
+        </div>
+        <div id="chat-detail-view" class="telegram-chat-detail-view" hidden>
+            <header class="telegram-subheader">
+                <button id="back-from-chat-detail-btn" class="telegram-back-button" type="button"
+                        aria-label="Back to chat">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 id="chat-detail-title">Members</h2>
+            </header>
+            <div id="chat-detail-content" class="telegram-chat-detail-scroll"></div>
+        </div>
+    </section>
 </section>
 
 <script id="dashboard-data" type="application/json">{{ dashboard_chats|tojson }}</script>

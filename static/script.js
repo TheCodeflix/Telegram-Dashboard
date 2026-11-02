@@ -27,6 +27,16 @@ function initializeDashboardReplica() {
     const emptyState = document.getElementById('empty-state');
     const profileView = document.getElementById('profile-view');
     const mainListView = document.getElementById('main-list-view');
+    const chatView = document.getElementById('chat-view');
+    const messageContainer = document.getElementById('chat-messages-container');
+    const chatDetailView = document.getElementById('chat-detail-view');
+    const chatDetailContent = document.getElementById('chat-detail-content');
+    const chatMenu = document.getElementById('chat-menu-dropdown');
+    let activeChat = null;
+    let requestToken = 0;
+    let loadingMessages = false;
+    let hasMoreMessages = false;
+    let currentMessagesPage = 1;
 
     function render() {
         const query = (searchInput?.value || '').trim().toLocaleLowerCase();
@@ -50,7 +60,7 @@ function initializeDashboardReplica() {
             const background = escHtml(chat.avatar_color || '#248bfe');
             const letter = escHtml(chat.avatar_letter || title[0] || '?');
             return `<li class="telegram-chat-row">
-                <a class="telegram-chat-link" href="${escHtml(chat.url)}">
+                <a class="telegram-chat-link" href="${escHtml(chat.url)}" data-chat-id="${escHtml(chat.chat_id)}">
                     <span class="telegram-chat-avatar" data-photo-fallback style="background:${background}">${letter}</span>
                     <img class="telegram-chat-avatar" data-photo-chat-id="${Number(chat.chat_id)}"
                          data-photo-endpoint="${escHtml(document.querySelector('[data-photo-endpoint]')?.dataset.photoEndpoint || '')}"
@@ -79,6 +89,341 @@ function initializeDashboardReplica() {
         });
         loadDeferredPhotos(list);
     }
+
+    function showChat(chat) {
+        activeChat = chat;
+        requestToken += 1;
+        loadingMessages = false;
+        hasMoreMessages = false;
+        currentMessagesPage = 1;
+        document.body.dataset.channelId = String(chat.chat_id);
+        document.body.dataset.chatUsername = chat.username || '';
+
+        const title = document.getElementById('chat-header-name');
+        const status = document.getElementById('chat-header-status');
+        const avatarRoot = document.getElementById('chat-header-avatar');
+        const menuButton = document.getElementById('chat-menu-btn');
+        if (title) title.textContent = chat.title || 'Unknown';
+        if (status) {
+            status.textContent = chat.member_count
+                ? `${fmtNum(chat.member_count)} members`
+                : (chat.username ? `@${chat.username}` : (chat.type || chat.category || 'Telegram chat'));
+        }
+        if (avatarRoot) {
+            const fallback = document.createElement('span');
+            fallback.className = 'telegram-chat-avatar chat-header-avatar-fallback';
+            fallback.dataset.photoFallback = '';
+            fallback.textContent = chat.avatar_letter || (chat.title || '?')[0];
+            fallback.style.background = chat.avatar_color || '#248bfe';
+            const image = document.createElement('img');
+            image.className = 'telegram-chat-avatar chat-header-avatar-image';
+            image.dataset.photoChatId = String(chat.chat_id);
+            image.dataset.photoEndpoint = chatView.dataset.photoEndpoint || '';
+            image.alt = '';
+            image.hidden = true;
+            avatarRoot.replaceChildren(fallback, image);
+        }
+        if (menuButton) {
+            menuButton.hidden = chat.category === 'users';
+            menuButton.setAttribute('aria-expanded', 'false');
+        }
+        if (chatMenu) chatMenu.hidden = true;
+        if (chatDetailView) chatDetailView.hidden = true;
+        if (messageContainer) {
+            messageContainer.innerHTML = '<div class="telegram-chat-loading" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Loading chat history…</span></div>';
+        }
+        if (mainListView) mainListView.hidden = true;
+        if (profileView) profileView.hidden = true;
+        if (chatView) chatView.hidden = false;
+        loadDeferredPhotos(chatView);
+        loadChatMessages(1, requestToken);
+    }
+
+    async function loadChatMessages(page, token = requestToken) {
+        if (!activeChat || !messageContainer || loadingMessages) return;
+        loadingMessages = true;
+        const isOlderPage = page > 1;
+        const oldHeight = messageContainer.scrollHeight;
+        const oldTop = messageContainer.scrollTop;
+        if (!isOlderPage) {
+            messageContainer.innerHTML = '<div class="telegram-chat-loading" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Loading chat history…</span></div>';
+        }
+
+        try {
+            const response = await fetch(`${channelApiBase()}/messages?page=${page}&limit=30`);
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            if (token !== requestToken) return;
+            if (!Array.isArray(result.messages)) throw new Error('Invalid chat history response.');
+
+            const rendered = result.messages.map(renderDashboardMessage).join('');
+            messageContainer.querySelector('.telegram-history-retry')?.remove();
+            if (isOlderPage) {
+                if (rendered) messageContainer.insertAdjacentHTML('afterbegin', rendered);
+                messageContainer.scrollTop = oldTop + messageContainer.scrollHeight - oldHeight;
+            } else {
+                messageContainer.innerHTML = rendered || '<div class="telegram-chat-empty">No messages found.</div>';
+                requestAnimationFrame(() => { messageContainer.scrollTop = messageContainer.scrollHeight; });
+            }
+            currentMessagesPage = page;
+            hasMoreMessages = result.messages.length >= 30;
+            observeDeferredThumbnails(messageContainer);
+        } catch (error) {
+            if (token !== requestToken) return;
+            if (isOlderPage) {
+                hasMoreMessages = false;
+                messageContainer.querySelector('.telegram-history-retry')?.remove();
+                messageContainer.insertAdjacentHTML('afterbegin', `<div class="telegram-history-retry" role="alert">
+                    <span>Could not load older messages: ${escHtml(error.message)}</span>
+                    <button class="telegram-chat-retry" type="button" data-retry-message-page="${page}">Retry</button>
+                </div>`);
+            } else {
+                messageContainer.innerHTML = `<div class="telegram-chat-error" role="alert">
+                    <span>Could not load chat history: ${escHtml(error.message)}</span>
+                    <button class="telegram-chat-retry" type="button" data-retry-chat>Retry</button>
+                </div>`;
+            }
+        } finally {
+            if (token === requestToken) loadingMessages = false;
+        }
+    }
+
+    function renderDashboardMessage(message) {
+        const id = Number(message.id) || 0;
+        const mediaType = String(message.media_type || '').toUpperCase();
+        const mediaLabel = message.media_label || 'Media';
+        const mediaIcon = message.media_icon || 'fa-paperclip';
+        const mediaName = message.media_name || message.media_mime_type || '';
+        const text = message.text || message.short_text || '';
+        const hasMedia = Boolean(message.has_media);
+        const thumbnail = message.media_preview
+            ? `<div class="telegram-media-thumbnail"><img src="${escHtml(message.media_preview)}" alt="${escHtml(mediaLabel)} thumbnail" loading="lazy">
+                ${['VIDEO', 'ANIMATION', 'VIDEO_NOTE'].includes(mediaType)
+                    ? '<span class="telegram-media-play"><i class="fa-solid fa-play"></i></span>' : ''}</div>`
+            : `<div class="telegram-media-thumbnail media-thumbnail-placeholder"
+                    data-message-id="${id}" data-media-type="${escHtml(mediaType)}"
+                    data-media-label="${escHtml(mediaLabel)}">
+                    <i class="fa-solid ${escHtml(mediaIcon)}"></i>
+               </div>`;
+        const media = hasMedia
+            ? `<div class="telegram-message-media">${thumbnail}
+                <div class="telegram-message-media-info">
+                    <strong>${escHtml(mediaLabel)}</strong>
+                    ${mediaName ? `<span>${escHtml(mediaName)}</span>` : ''}
+                    ${message.media_duration ? `<span>${escHtml(message.media_duration)} sec</span>` : ''}
+                </div></div>`
+            : '';
+        const time = message.date
+            ? formatMessageTime(message.date)
+            : '';
+
+        return `<article class="telegram-message" id="msg-${id}">
+            <header class="telegram-message-header">
+                <span class="telegram-message-sender">${escHtml(message.sender || activeChat?.title || 'Telegram')}</span>
+                <time>${escHtml(time)}</time>
+                <div class="telegram-message-action-wrap">
+                    <button type="button" class="telegram-message-action-button"
+                            aria-label="Message actions" aria-expanded="false">
+                        <i class="fa-solid fa-ellipsis"></i>
+                    </button>
+                    <div class="telegram-message-menu" hidden>
+                        <button type="button" data-copy-message="${id}"><i class="fa-solid fa-link"></i>Copy message link</button>
+                        <button type="button" data-delete-message="${id}"><i class="fa-solid fa-trash"></i>Delete message</button>
+                    </div>
+                </div>
+            </header>
+            ${media}
+            ${text ? `<p class="telegram-message-text">${escHtml(text)}</p>` : (hasMedia ? '' : '<p class="telegram-message-text telegram-message-muted">Empty message</p>')}
+            ${message.views ? `<span class="telegram-message-views"><i class="fa-solid fa-eye"></i> ${fmtNum(message.views)}</span>` : ''}
+        </article>`;
+    }
+
+    function formatMessageTime(value) {
+        const date = new Date(String(value).replace(' ', 'T'));
+        return Number.isNaN(date.getTime())
+            ? String(value)
+            : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function showChatDetail(title, content) {
+        if (!chatDetailView || !chatDetailContent) return;
+        document.getElementById('chat-detail-title').textContent = title;
+        chatDetailContent.innerHTML = content;
+        chatDetailView.hidden = false;
+    }
+
+    async function loadChatMembers(page = 1) {
+        if (!activeChat || !chatDetailContent) return;
+        const chatId = activeChat.chat_id;
+        chatDetailContent.innerHTML = '<div class="telegram-chat-loading"><span class="spinner-border spinner-border-sm"></span><span>Loading members…</span></div>';
+        try {
+            const response = await fetch(`${channelApiBase()}/members?page=${page}&limit=50`);
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+            if (String(activeChat?.chat_id) !== String(chatId)) return;
+            const rows = result.members.map(member => `<div class="telegram-member-row">
+                <span class="telegram-member-avatar" style="background:${escHtml(member.avatar_color || '#248bfe')}">${escHtml(member.avatar_letter || '?')}</span>
+                <span class="telegram-member-info"><strong>${escHtml(member.name || 'Unknown')}</strong>
+                    <small>${member.username ? `@${escHtml(member.username)}` : escHtml(member.status || 'Member')}</small></span>
+                ${member.is_bot ? '<span class="telegram-member-bot">Bot</span>' : ''}
+            </div>`).join('');
+            const more = result.members.length >= 50
+                ? `<button type="button" class="telegram-detail-more" data-members-page="${page + 1}">Load more members</button>`
+                : '';
+            chatDetailContent.innerHTML = rows || '<p class="telegram-chat-empty">No member data available.</p>';
+            chatDetailContent.insertAdjacentHTML('beforeend', more);
+        } catch (error) {
+            if (String(activeChat?.chat_id) !== String(chatId)) return;
+            chatDetailContent.innerHTML = `<div class="telegram-chat-error" role="alert">Could not load members: ${escHtml(error.message)}
+                <button type="button" class="telegram-chat-retry" data-retry-members="${page}">Retry</button></div>`;
+        }
+    }
+
+    async function handleChatAction(action) {
+        if (!activeChat) return;
+        if (action === 'members') {
+            showChatDetail('Members', '');
+            await loadChatMembers(1);
+        } else if (action === 'invite') {
+            const chatId = activeChat.chat_id;
+            showChatDetail('Invite Link', '<div class="telegram-chat-loading"><span class="spinner-border spinner-border-sm"></span><span>Generating invite link…</span></div>');
+            try {
+                const response = await fetch(`${channelApiBase()}/invite`, { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+                if (String(activeChat?.chat_id) !== String(chatId)) return;
+                chatDetailContent.innerHTML = `<p class="telegram-detail-description">Invite link for ${escHtml(activeChat.title)}:</p>
+                    <div class="telegram-invite-box"><input type="text" readonly value="${escHtml(result.invite_link)}" aria-label="Invite link">
+                    <button type="button" data-copy-invite><i class="fa-solid fa-copy"></i><span>Copy</span></button></div>`;
+            } catch (error) {
+                if (String(activeChat?.chat_id) !== String(chatId)) return;
+                chatDetailContent.innerHTML = `<div class="telegram-chat-error" role="alert">Could not generate invite link: ${escHtml(error.message)}</div>`;
+            }
+        } else if (action === 'ownership') {
+            showChatDetail('Transfer Ownership', `<p class="telegram-detail-description">Transfer ownership of ${escHtml(activeChat.title)} to another Telegram user.</p>
+                <form id="dashboard-transfer-form" class="telegram-transfer-form">
+                    <label for="dashboard-transfer-user">Target user ID</label>
+                    <input id="dashboard-transfer-user" name="user_id" type="number" required>
+                    <label for="dashboard-transfer-password">Two-step verification password</label>
+                    <input id="dashboard-transfer-password" name="password" type="password" required autocomplete="current-password">
+                    <button type="submit">Transfer ownership</button>
+                    <p class="telegram-form-error" id="dashboard-transfer-error" role="alert" hidden></p>
+                </form>`);
+        }
+    }
+
+    list.addEventListener('click', event => {
+        const link = event.target.closest('.telegram-chat-link');
+        if (!link) return;
+        event.preventDefault();
+        const chat = chats.find(item => String(item.chat_id) === link.dataset.chatId);
+        if (chat) showChat(chat);
+    });
+
+    messageContainer?.addEventListener('scroll', () => {
+        if (messageContainer.scrollTop <= 70 && hasMoreMessages && !loadingMessages) {
+            loadChatMessages(currentMessagesPage + 1);
+        }
+    });
+    messageContainer?.addEventListener('click', event => {
+        const retry = event.target.closest('[data-retry-chat]');
+        if (retry) loadChatMessages(1);
+        const retryOlder = event.target.closest('[data-retry-message-page]');
+        if (retryOlder) loadChatMessages(Number(retryOlder.dataset.retryMessagePage));
+
+        const actionButton = event.target.closest('.telegram-message-action-button');
+        if (actionButton) {
+            const menu = actionButton.nextElementSibling;
+            const shouldOpen = menu.hidden;
+            messageContainer.querySelectorAll('.telegram-message-menu').forEach(item => { item.hidden = true; });
+            messageContainer.querySelectorAll('.telegram-message-action-button').forEach(item => item.setAttribute('aria-expanded', 'false'));
+            menu.hidden = !shouldOpen;
+            actionButton.setAttribute('aria-expanded', String(shouldOpen));
+        }
+        const copyButton = event.target.closest('[data-copy-message]');
+        if (copyButton) {
+            copyMessageLink(Number(copyButton.dataset.copyMessage));
+            const menu = copyButton.closest('.telegram-message-menu');
+            if (menu) menu.hidden = true;
+        }
+        const deleteButton = event.target.closest('[data-delete-message]');
+        if (deleteButton) {
+            const messageId = Number(deleteButton.dataset.deleteMessage);
+            const menu = deleteButton.closest('.telegram-message-menu');
+            if (menu) menu.hidden = true;
+            deleteMessage(messageId, document.getElementById(`msg-${messageId}`));
+        }
+    });
+    document.getElementById('back-to-list-btn')?.addEventListener('click', () => {
+        requestToken += 1;
+        loadingMessages = false;
+        if (chatView) chatView.hidden = true;
+        if (mainListView) mainListView.hidden = false;
+        if (chatMenu) chatMenu.hidden = true;
+    });
+    document.getElementById('back-from-chat-detail-btn')?.addEventListener('click', () => {
+        if (chatDetailView) chatDetailView.hidden = true;
+    });
+    document.getElementById('chat-menu-btn')?.addEventListener('click', event => {
+        event.stopPropagation();
+        if (!chatMenu) return;
+        chatMenu.hidden = !chatMenu.hidden;
+        event.currentTarget.setAttribute('aria-expanded', String(!chatMenu.hidden));
+    });
+    chatMenu?.addEventListener('click', event => {
+        const button = event.target.closest('[data-action]');
+        if (!button) return;
+        chatMenu.hidden = true;
+        document.getElementById('chat-menu-btn')?.setAttribute('aria-expanded', 'false');
+        handleChatAction(button.dataset.action);
+    });
+    document.addEventListener('click', event => {
+        if (chatMenu && !chatMenu.hidden && !chatMenu.contains(event.target)
+            && !document.getElementById('chat-menu-btn')?.contains(event.target)) {
+            chatMenu.hidden = true;
+            document.getElementById('chat-menu-btn')?.setAttribute('aria-expanded', 'false');
+        }
+    });
+    chatDetailContent?.addEventListener('click', event => {
+        const more = event.target.closest('[data-members-page]');
+        if (more) loadChatMembers(Number(more.dataset.membersPage));
+        const retry = event.target.closest('[data-retry-members]');
+        if (retry) loadChatMembers(Number(retry.dataset.retryMembers));
+        if (event.target.closest('[data-copy-invite]')) {
+            const input = chatDetailContent.querySelector('.telegram-invite-box input');
+            if (input) copyToClipboard(input.value, 'Invite link copied!');
+        }
+    });
+    chatDetailContent?.addEventListener('submit', async event => {
+        if (event.target.id !== 'dashboard-transfer-form') return;
+        event.preventDefault();
+        const form = event.target;
+        const errorBox = form.querySelector('#dashboard-transfer-error');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const formData = new FormData(form);
+        if (!confirm('Transfer ownership? This action cannot be undone.')) return;
+        submitButton.disabled = true;
+        try {
+            const response = await fetch(`${channelApiBase()}/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_user_id: formData.get('user_id'),
+                    password: formData.get('password')
+                })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+            chatDetailContent.innerHTML = '<p class="telegram-chat-empty">Ownership transferred successfully.</p>';
+        } catch (error) {
+            errorBox.textContent = error.message;
+            errorBox.hidden = false;
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
 
     document.querySelectorAll('.telegram-tab-btn').forEach(button => {
         button.addEventListener('click', () => {
@@ -124,6 +469,7 @@ const thumbnailQueues = new Map();
 const thumbnailTimers = new Map();
 const activeThumbnailRequests = new Set();
 let thumbnailObserver;
+let thumbnailObserverRoot;
 
 function observeDeferredThumbnails(root = document) {
     const placeholders = root.querySelectorAll
@@ -136,14 +482,19 @@ function observeDeferredThumbnails(root = document) {
         return;
     }
 
-    if (!thumbnailObserver) {
+    const scrollRoot = root?.id === 'messagesContainer' || root?.id === 'chat-messages-container'
+        ? root
+        : (document.getElementById('messagesContainer') || document.getElementById('chat-messages-container'));
+    if (!thumbnailObserver || thumbnailObserverRoot !== scrollRoot) {
+        thumbnailObserver?.disconnect();
         thumbnailObserver = new IntersectionObserver(entries => {
             entries.forEach(entry => {
                 if (!entry.isIntersecting) return;
                 thumbnailObserver.unobserve(entry.target);
                 enqueueThumbnail(entry.target);
             });
-        }, { root: document.getElementById('messagesContainer'), rootMargin: '180px' });
+        }, { root: scrollRoot, rootMargin: '180px' });
+        thumbnailObserverRoot = scrollRoot;
     }
     placeholders.forEach(placeholder => thumbnailObserver.observe(placeholder));
 }
@@ -266,7 +617,9 @@ async function loadAdmins() {
 
 function loadDeferredPhotos(root = document) {
     if (!root) return;
-    const images = [...root.querySelectorAll('img[data-photo-chat-id]')];
+    const images = [...root.querySelectorAll('img[data-photo-chat-id]')].filter(img =>
+        img.dataset.photoChatId && Number.isSafeInteger(Number(img.dataset.photoChatId))
+    );
     if (!images.length) return;
 
     const queues = new Map();
@@ -283,19 +636,26 @@ function loadDeferredPhotos(root = document) {
         const queue = queues.get(endpoint) || [];
         const batch = queue.splice(0, 12);
         if (!batch.length) return;
+        const requestedIds = new Map(batch.map(img => [img, img.dataset.photoChatId]));
         active.add(endpoint);
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_ids: batch.map(img => Number(img.dataset.photoChatId)) })
+                body: JSON.stringify({ chat_ids: batch.map(img => Number(requestedIds.get(img))) })
             });
             if (!response.ok) throw new Error(`Photo request failed: HTTP ${response.status}`);
             const result = await response.json();
             if (!result.success) throw new Error(result.error || 'Photo request failed');
 
             batch.forEach(img => {
-                const photo = result.photos[String(img.dataset.photoChatId)];
+                img.dataset.photoQueued = '';
+                if (img.dataset.photoChatId !== requestedIds.get(img)) {
+                    enqueue(img);
+                    return;
+                }
+                const photo = result.photos[String(requestedIds.get(img))];
+                img.dataset.photoLoaded = 'true';
                 if (!photo) return;
                 img.onload = () => {
                     img.hidden = false;
@@ -310,6 +670,10 @@ function loadDeferredPhotos(root = document) {
                 img.src = photo;
             });
         } catch (error) {
+            batch.forEach(img => {
+                img.dataset.photoQueued = '';
+                img.dataset.photoObserved = '';
+            });
             console.warn('Could not load chat photos:', error);
         } finally {
             active.delete(endpoint);
@@ -318,9 +682,11 @@ function loadDeferredPhotos(root = document) {
     }
 
     function enqueue(img) {
+        if (img.dataset.photoQueued || img.dataset.photoLoaded) return;
         const endpoint = img.dataset.photoEndpoint;
         const chatId = Number(img.dataset.photoChatId);
         if (!endpoint || !Number.isSafeInteger(chatId)) return;
+        img.dataset.photoQueued = 'true';
         if (!queues.has(endpoint)) queues.set(endpoint, []);
         queues.get(endpoint).push(img);
         schedule(endpoint);
@@ -337,8 +703,9 @@ function loadDeferredPhotos(root = document) {
                 if (img) enqueue(img);
             });
         }, { rootMargin: '250px' });
-        images.forEach(img => {
+        images.filter(img => !img.dataset.photoObserved).forEach(img => {
             const fallback = img.previousElementSibling;
+            img.dataset.photoObserved = 'true';
             observer.observe(
                 fallback && fallback.hasAttribute('data-photo-fallback') ? fallback : img
             );
