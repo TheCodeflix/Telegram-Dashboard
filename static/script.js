@@ -49,14 +49,6 @@ function initializeDashboardReplica() {
 
         list.innerHTML = filtered.map(chat => {
             const title = escHtml(chat.title || 'Unknown');
-            const preview = escHtml(
-                chat.last_message
-                || (chat.username ? `@${chat.username}` : '')
-                || (chat.member_count ? `${fmtNum(chat.member_count)} members` : '')
-                || (chat.type === 'bot' ? 'Bot' : chat.type || 'Telegram chat')
-            );
-            const date = formatDialogDate(chat.last_message_date);
-            const unread = Number(chat.unread_count) || 0;
             const background = escHtml(chat.avatar_color || '#248bfe');
             const letter = escHtml(chat.avatar_letter || title[0] || '?');
             return `<li class="telegram-chat-row">
@@ -68,13 +60,7 @@ function initializeDashboardReplica() {
                     <span class="telegram-chat-content">
                         <span class="telegram-chat-title-line">
                             <span class="telegram-chat-title">${title}</span>
-                            ${chat.is_verified ? '<i class="fa-solid fa-circle-check telegram-chat-verified" title="Verified"></i>' : ''}
                         </span>
-                        <span class="telegram-chat-preview">${preview}</span>
-                    </span>
-                    <span class="telegram-chat-meta">
-                        ${date ? `<time>${escHtml(date)}</time>` : ''}
-                        ${unread > 0 ? `<span class="telegram-unread-count">${unread > 99 ? '99+' : unread}</span>` : ''}
                     </span>
                 </a>
             </li>`;

@@ -465,8 +465,9 @@ body.replica-dashboard-page main.container {
 .telegram-profile-view { position: absolute; z-index: 20; inset: 0; display: flex; flex-direction: column; background: #0e1621; }
 .telegram-profile-view[hidden] { display: none; }
 .telegram-subheader { justify-content: flex-start; gap: 14px; }
-.telegram-subheader h2 { margin: 0; color: #fff; font-size: 1rem; font-weight: 650; }
+.telegram-subheader h2 { margin: 0; color: #fff; font-size: 1.125rem; font-weight: 650; letter-spacing: .02em; }
 .telegram-profile-scroll { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; padding: 16px; scrollbar-color: #354352 #0e1621; scrollbar-width: thin; }
+.telegram-profile-scroll > * { flex: 0 0 auto; }
 .telegram-profile-banner, .telegram-profile-card { overflow: hidden; border: 1px solid rgba(35,46,60,.8); border-radius: 16px; background: #17212b; box-shadow: 0 8px 24px rgba(0,0,0,.16); }
 .telegram-profile-banner { display: flex; flex-direction: column; align-items: center; padding: 20px 16px; text-align: center; }
 .telegram-profile-avatar-wrap { position: relative; width: 78px; height: 78px; margin-bottom: 11px; }
@@ -477,8 +478,8 @@ body.replica-dashboard-page main.container {
 .telegram-profile-row { display: flex; min-height: 64px; align-items: center; gap: 11px; padding: 10px 14px; border-bottom: 1px solid rgba(35,46,60,.45); }
 .telegram-profile-row:last-child { border-bottom: 0; }
 .telegram-profile-row > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-.telegram-profile-row small { color: #7f91a4; font-size: .64rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.telegram-profile-row strong { overflow: hidden; color: #f2f5f8; font-size: .79rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.telegram-profile-row small { color: #7f91a4; font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.telegram-profile-row strong { color: #f2f5f8; font-size: .875rem; font-weight: 600; overflow-wrap: anywhere; }
 .telegram-detail-icon { display: inline-flex; width: 34px; height: 34px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 10px; font-size: .82rem; }
 .detail-blue { background: rgba(36,139,254,.12); color: #248bfe; }
 .detail-indigo { background: rgba(129,111,255,.12); color: #9c8cff; }
@@ -550,6 +551,7 @@ body.replica-dashboard-page #toast-container { z-index: 1100; }
     color: #91a1b2;
     cursor: pointer;
 }
+.telegram-chat-menu-button i { display: inline-block; line-height: 1; }
 .telegram-chat-menu-button:hover { background: #202b36; color: #fff; }
 .telegram-chat-menu {
     position: absolute;

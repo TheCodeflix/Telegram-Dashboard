@@ -69,9 +69,9 @@
         <header class="telegram-subheader">
             <button id="back-from-profile-btn" class="telegram-back-button" type="button"
                     aria-label="Back to chats">
-                <i class="fa-solid fa-arrow-left"></i>
+                <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
             </button>
-            <h2>{% if user_info.is_bot %}Bot Info{% else %}User Info{% endif %}</h2>
+            <h2>User Info</h2>
         </header>
         <div class="telegram-profile-scroll">
             <section class="telegram-profile-banner">
@@ -148,7 +148,7 @@
             <div class="telegram-chat-header-identity">
                 <button id="back-to-list-btn" class="telegram-back-button" type="button"
                         aria-label="Back to chats">
-                    <i class="fa-solid fa-arrow-left"></i>
+                    <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
                 </button>
                 <span id="chat-header-avatar" class="telegram-chat-avatar-wrap">
                     <span class="telegram-chat-avatar chat-header-avatar-fallback" data-photo-fallback>?</span>
@@ -163,7 +163,7 @@
             <div class="telegram-chat-menu-wrap">
                 <button id="chat-menu-btn" class="telegram-chat-menu-button" type="button"
                         aria-label="Chat actions" aria-expanded="false">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                    <i class="fa-solid fa-ellipsis-vertical text-base" aria-hidden="true"></i>
                 </button>
                 <div id="chat-menu-dropdown" class="telegram-chat-menu" hidden>
                     <button class="chat-menu-item" type="button" data-action="members">
