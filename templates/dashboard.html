@@ -1,201 +1,147 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — {{ user_info.user_name or "My Account" }}{% endblock %}
+{% block title %}Telegram — {{ user_info.user_name or "My Account" }}{% endblock %}
 
 {% block content %}
-
-{# ── User Header ── #}
-<section class="dashboard-hero mb-4">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
-            <div class="d-flex align-items-center gap-3">
-                <div class="avatar-circle" data-photo-fallback style="font-size:1.4rem;">
+<section class="telegram-app" aria-label="Telegram dashboard">
+    <div id="main-list-view" class="telegram-main-view">
+        <header class="telegram-topbar">
+            <button id="open-profile-btn" class="telegram-profile-button" type="button"
+                    title="View profile" aria-label="View profile">
+                <span class="telegram-top-avatar" data-photo-fallback>
                     {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
-                </div>
-                <img class="avatar-circle" data-photo-chat-id="{{ user_info.user_id }}"
+                </span>
+                <img class="telegram-top-avatar" data-photo-chat-id="{{ user_info.user_id }}"
                      data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
-                     alt="{{ user_info.user_name }}" style="object-fit:cover;" hidden>
-                <div>
-                    <h5 class="mb-0 fw-bold">{{ user_info.user_name or "Unknown" }}</h5>
-                    <small class="text-muted">
-                        {% if user_info.username %}@{{ user_info.username }}{% endif %}
-                        {% if user_info.phone %}&nbsp;·&nbsp;{{ user_info.phone }}{% endif %}
-                        {% if user_info.is_premium %}&nbsp;<span class="badge" style="background:#f4a006;">⭐ Premium</span>{% endif %}
-                    </small>
-                </div>
+                     alt="" hidden>
+            </button>
+            <h1>Telegram</h1>
+            <span class="telegram-topbar-spacer" aria-hidden="true"></span>
+        </header>
+
+        <div class="telegram-search-wrap">
+            <label class="telegram-search" for="search-input">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input id="search-input" type="search"
+                       placeholder="Search chats, groups, channels…"
+                       autocomplete="off" aria-label="Search chats, groups, and channels">
+                <button id="clear-search" type="button" aria-label="Clear search" hidden>
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </label>
+        </div>
+
+        <nav class="telegram-tabs" aria-label="Chat categories">
+            <div class="telegram-tab-pill">
+                <button class="telegram-tab-btn" type="button" data-tab="channels" aria-pressed="false">
+                    <span>Channels</span>
+                    <span class="telegram-tab-count">{{ counts.channels }}</span>
+                </button>
+                <button class="telegram-tab-btn is-active" type="button" data-tab="groups" aria-pressed="true">
+                    <span>Groups</span>
+                    <span class="telegram-tab-count">{{ counts.groups }}</span>
+                </button>
+                <button class="telegram-tab-btn" type="button" data-tab="users" aria-pressed="false">
+                    <span>Users</span>
+                    <span class="telegram-tab-count">{{ counts.users }}</span>
+                </button>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
-                <a href="{{ url_for('profile', unique_link=unique_link) }}"
-                   class="btn btn-sm btn-outline-light">
-                    <i class="fas fa-user me-1"></i>Profile
-                </a>
-                <a href="{{ url_for('web_logout', unique_link=unique_link) }}"
-                   class="btn btn-sm btn-outline-danger"
-                         onclick="return confirm('Remove this dashboard session? This will not log your Telegram account out on other devices.')">
-                    <i class="fas fa-sign-out-alt me-1"></i>Logout
-                </a>
+        </nav>
+
+        <div id="list-scroll-area" class="telegram-list-scroll">
+            <ul id="items-list" class="telegram-chat-list" aria-live="polite"></ul>
+            <div id="empty-state" class="telegram-empty-state" hidden>
+                <span class="telegram-empty-icon"><i class="fa-solid fa-folder-open"></i></span>
+                <strong>No chats found</strong>
+                <span>Try another search or category.</span>
             </div>
         </div>
+
+        <footer class="telegram-statusbar">
+            <span class="telegram-sync-status">
+                <span class="telegram-status-dot"></span>
+                <span id="health-indicator">Checking connection…</span>
+            </span>
+            <span>Telegram account</span>
+        </footer>
+    </div>
+
+    <section id="profile-view" class="telegram-profile-view" aria-label="User profile" hidden>
+        <header class="telegram-subheader">
+            <button id="back-from-profile-btn" class="telegram-back-button" type="button"
+                    aria-label="Back to chats">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+            <h2>{% if user_info.is_bot %}Bot Info{% else %}User Info{% endif %}</h2>
+        </header>
+        <div class="telegram-profile-scroll">
+            <section class="telegram-profile-banner">
+                <div class="telegram-profile-avatar-wrap">
+                    <span class="telegram-profile-avatar-fallback" data-photo-fallback>
+                        {{ (user_info.first_name or user_info.user_name or "?")[0]|upper }}
+                    </span>
+                    <img class="telegram-profile-avatar" data-photo-chat-id="{{ user_info.user_id }}"
+                         data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
+                         alt="{{ user_info.user_name or 'Profile photo' }}" hidden>
+                </div>
+                <h3>{{ user_info.user_name or "Unknown" }}</h3>
+                {% if user_info.is_premium %}
+                <span class="telegram-premium-badge"><i class="fa-solid fa-star"></i> Premium</span>
+                {% endif %}
+            </section>
+
+            <section class="telegram-profile-card" aria-label="Account details">
+                <h4>Account Details</h4>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-blue"><i class="fa-solid fa-id-card"></i></span>
+                    <span><small>Full Name</small><strong>{{ user_info.user_name or "Not available" }}</strong></span>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-indigo"><i class="fa-solid fa-at"></i></span>
+                    <span><small>Username</small><strong>{% if user_info.username %}@{{ user_info.username }}{% else %}Not available{% endif %}</strong></span>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-purple"><i class="fa-solid fa-fingerprint"></i></span>
+                    <span><small>{% if user_info.is_bot %}Bot ID{% else %}User ID{% endif %}</small><strong class="telegram-monospace">{{ user_info.user_id or "Not available" }}</strong></span>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-green"><i class="fa-solid fa-phone"></i></span>
+                    <span><small>Phone Number</small><strong>{{ user_info.phone or "Hidden / Not Available" }}</strong></span>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-amber"><i class="fa-solid fa-server"></i></span>
+                    <span><small>Data Center</small><strong>{% if user_info.dc_id %}DC {{ user_info.dc_id }}{% else %}Not available{% endif %}</strong></span>
+                </div>
+            </section>
+
+            <section class="telegram-profile-card telegram-privileges" aria-label="Chat privileges">
+                <div class="telegram-profile-card-heading">
+                    <h4>Chat Privileges &amp; Stats</h4>
+                    <span>Role Analysis</span>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-amber"><i class="fa-solid fa-crown"></i></span>
+                    <span><small>Owner In</small><strong>Channels / Groups Created</strong></span>
+                    <b class="privilege-count owner-count">{{ counts.owner }} {% if counts.owner == 1 %}Chat{% else %}Chats{% endif %}</b>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-blue"><i class="fa-solid fa-user-shield"></i></span>
+                    <span><small>Admin In</small><strong>Admin Privileges Active</strong></span>
+                    <b class="privilege-count admin-count">{{ counts.admin }} {% if counts.admin == 1 %}Chat{% else %}Chats{% endif %}</b>
+                </div>
+                <div class="telegram-profile-row">
+                    <span class="telegram-detail-icon detail-green"><i class="fa-solid fa-users"></i></span>
+                    <span><small>Member In</small><strong>Normal Member Chats</strong></span>
+                    <b class="privilege-count member-count">{{ counts.member }} {% if counts.member == 1 %}Chat{% else %}Chats{% endif %}</b>
+                </div>
+            </section>
+
+            <a class="telegram-logout-link" href="{{ url_for('web_logout', unique_link=unique_link) }}"
+               onclick="return confirm('Remove this dashboard session? This will not log your Telegram account out on other devices.')">
+                <i class="fa-solid fa-right-from-bracket"></i> Logout &amp; Invalidate Dashboard Link
+            </a>
+        </div>
+    </section>
 </section>
 
-{# ── Account access summary ── #}
-<div class="row g-3 mb-4">
-    {% for label, icon, color, key in [
-        ("Owner", "crown", "#bd6b16", "owner"),
-        ("Admin", "shield-alt", "#16806a", "admin"),
-        ("Member", "users", "#356b9a", "member"),
-        ("Bots", "robot", "#b44b30", "bots"),
-    ] %}
-    <div class="col-6 col-md-3">
-        <div class="card stat-card text-center h-100">
-            <div class="card-body py-3">
-                <span class="stat-icon"><i class="fas fa-{{ icon }}"></i></span>
-                <div class="stat-val" style="color:{{ color }};">{{ counts[key] }}</div>
-                <div class="stat-label">{{ label }}</div>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-<p class="small text-muted mb-4">Bot count reflects bots in your chats; Telegram does not expose bot ownership in this account data.</p>
-
-{# ── Search ── #}
-<div class="search-panel mb-4">
-    <div class="input-group">
-        <span class="input-group-text">
-            <i class="fas fa-search text-muted"></i>
-        </span>
-        <input id="searchInput" type="search" class="form-control"
-               placeholder="Search chats by name, username, or chat ID…" autocomplete="off"
-               aria-label="Search chats by name, username, or chat ID">
-        <button class="btn btn-outline-secondary ms-2" type="button" onclick="window.location.reload()" aria-label="Refresh dashboard" title="Refresh dashboard">
-            <i class="fas fa-sync-alt"></i>
-        </button>
-    </div>
-</div>
-
-{# ── Owner, admin, and member chats ── #}
-{% for section_key, section_label, section_icon, section_color in [
-    ("owner", "Owner", "crown", "#bd6b16"),
-    ("admin", "Administrator", "shield-alt", "#16806a"),
-    ("member", "Normal member", "users", "#356b9a"),
-] %}
-{% set items = dialogs.access_categories[section_key] %}
-{% if items %}
-<div class="mb-4 dialog-section access-section" data-section="{{ section_key }}">
-    <div class="d-flex align-items-center mb-3 gap-2">
-        <i class="fas fa-{{ section_icon }}" style="color:{{ section_color }};"></i>
-        <span class="section-title">{{ section_label }}</span>
-        <span class="count-badge">{{ items|length }}</span>
-    </div>
-    <div class="row g-3">
-        {% for item in items %}
-        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
-            <div class="card dialog-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 py-3">
-                    <div class="avatar-sm" data-photo-fallback style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
-                    <img class="dialog-avatar" data-photo-chat-id="{{ item.chat_id }}"
-                         data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
-                         alt="{{ item.title }}" hidden>
-                    <div class="flex-grow-1 overflow-hidden">
-                        <div class="fw-semibold text-truncate">
-                            <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">
-                            {{ item.title }}
-                            </a>
-                            {% if item.is_verified %}<i class="fas fa-check-circle text-primary ms-1" title="Verified"></i>{% endif %}
-                            {% if item.is_scam %}<span class="badge bg-danger ms-1">Scam</span>{% endif %}
-                        </div>
-                        <small class="text-muted text-truncate d-block">
-                            {% if item.username %}@{{ item.username }}{% endif %}
-                            {% if item.member_count %}
-                                {% if item.username %}&nbsp;·&nbsp;{% endif %}
-                                {{ "{:,}".format(item.member_count) }} members
-                            {% endif %}
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-{% endfor %}
-
-{% for section_key, section_label, section_icon, section_color in [
-    ("bots", "Bots", "robot", "#b44b30"),
-    ("contacts", "Contacts", "user", "#356b9a"),
-] %}
-{% set items = dialogs[section_key] %}
-{% if items %}
-<div class="mb-5 dialog-section" data-section="{{ section_key }}">
-    <div class="d-flex align-items-center mb-3 gap-2">
-        <i class="fas fa-{{ section_icon }}" style="color:{{ section_color }};"></i>
-        <span class="section-title">{{ section_label }}</span>
-        <span class="count-badge">{{ items|length }}</span>
-    </div>
-    <div class="row g-3">
-        {% for item in items %}
-        <div class="col-12 col-sm-6 col-lg-4 dialog-item" data-title="{{ item.title|lower }}" data-username="{{ item.username|lower }}" data-chat-id="{{ item.chat_id }}">
-            <div class="card dialog-card h-100">
-                <div class="card-body d-flex align-items-center gap-3 py-3">
-                    <div class="avatar-sm" data-photo-fallback style="background:{{ item.avatar_color }};">{{ item.avatar_letter }}</div>
-                    <img class="dialog-avatar" data-photo-chat-id="{{ item.chat_id }}"
-                         data-photo-endpoint="{{ url_for('dashboard_photos', unique_link=unique_link) }}"
-                         alt="{{ item.title }}" hidden>
-                    <div class="flex-grow-1 overflow-hidden">
-                        <div class="fw-semibold text-truncate">
-                            <a class="text-reset text-decoration-none" href="{{ url_for('channel_view', unique_link=unique_link, channel_id=item.chat_id) }}">{{ item.title }}</a>
-                        </div>
-                        <small class="text-muted text-truncate d-block">
-                            {% if item.username %}@{{ item.username }}{% endif %}
-                            {% if item.member_count %}
-                                {% if item.username %}&nbsp;·&nbsp;{% endif %}
-                                {{ "{:,}".format(item.member_count) }} members
-                            {% endif %}
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-{% endfor %}
-
-{% if counts.channels == 0 and counts.groups == 0 and counts.contacts == 0 and counts.bots == 0 %}
-<div class="empty-state text-muted">
-    <span class="empty-state-icon"><i class="fas fa-inbox"></i></span>
-    <h2 class="h5 fw-bold text-dark">No chats found</h2>
-    <p class="mb-0">Your Telegram chats will appear here once they finish loading.</p>
-</div>
-{% endif %}
-<div id="searchEmptyState" class="empty-state text-muted d-none" role="status">
-    <span class="empty-state-icon"><i class="fas fa-search"></i></span>
-    <h2 class="h5 fw-bold text-dark">No matching chats</h2>
-    <p class="mb-0">Try a different name, username, or chat ID.</p>
-</div>
-
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-const searchInput = document.getElementById('searchInput');
-if (searchInput) searchInput.addEventListener('input', function () {
-    const q = this.value.toLowerCase().trim();
-    document.querySelectorAll('.dialog-item').forEach(function (el) {
-        const title = el.dataset.title || '';
-        const uname = el.dataset.username || '';
-        const chatId = el.dataset.chatId || '';
-        el.style.display = (!q || title.includes(q) || uname.includes(q) || chatId.includes(q)) ? '' : 'none';
-    });
-    let hasVisibleChats = false;
-    document.querySelectorAll('.dialog-section').forEach(function (sec) {
-        const visible = [...sec.querySelectorAll('.dialog-item')].some(e => e.style.display !== 'none');
-        sec.style.display = visible ? '' : 'none';
-        hasVisibleChats = hasVisibleChats || visible;
-    });
-    const emptyState = document.getElementById('searchEmptyState');
-    if (emptyState) emptyState.classList.toggle('d-none', !q || hasVisibleChats);
-});
-</script>
+<script id="dashboard-data" type="application/json">{{ dashboard_chats|tojson }}</script>
 {% endblock %}

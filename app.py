@@ -4,7 +4,7 @@ import logging
 import time
 import threading
 from functools import wraps
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, url_for
 import config
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -262,11 +262,32 @@ def dashboard(unique_link):
                 message="Could not load your Telegram dashboard. Please refresh and try again."
             ), 503
 
+    sorted_dialogs = dialogs_data["sorted"]
+    counts = dialogs_data["counts"]
+    sorted_dialogs["users"] = sorted_dialogs.get("users") or sorted(
+        sorted_dialogs.get("contacts", []) + sorted_dialogs.get("bots", []),
+        key=lambda item: (item.get("title") or "").lower(),
+    )
+    counts["users"] = len(sorted_dialogs["users"])
+    dashboard_chats = []
+    for category in ("channels", "groups", "users"):
+        for item in sorted_dialogs.get(category, []):
+            dashboard_chats.append({
+                **item,
+                "category": category,
+                "url": url_for(
+                    "channel_view",
+                    unique_link=unique_link,
+                    channel_id=item["chat_id"],
+                ),
+            })
+
     return render_template(
         "dashboard.html",
         user_info=user_info,
-        dialogs=dialogs_data["sorted"],
-        counts=dialogs_data["counts"],
+        dialogs=sorted_dialogs,
+        dashboard_chats=dashboard_chats,
+        counts=counts,
         unique_link=unique_link,
         domain=DOMAIN,
     )

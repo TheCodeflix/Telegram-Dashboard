@@ -21,6 +21,9 @@ def format_dialog(dialog: dict) -> dict:
         "type": get_dialog_type(dialog),
         "role": dialog.get("role", "member"),
         "member_count": dialog.get("member_count"),
+        "unread_count": dialog.get("unread_count", 0) or 0,
+        "last_message": dialog.get("last_message") or "",
+        "last_message_date": dialog.get("last_message_date") or "",
         "is_verified": dialog.get("is_verified", False),
         "is_scam": dialog.get("is_scam", False),
         "photo": dialog.get("photo"),
@@ -36,6 +39,7 @@ def sort_dialogs_by_type(dialogs: list) -> dict:
         "groups": [],
         "contacts": [],
         "bots": [],
+        "users": [],
         "access_categories": {"owner": [], "admin": [], "member": []},
     }
     for raw in dialogs:
@@ -53,8 +57,11 @@ def sort_dialogs_by_type(dialogs: list) -> dict:
             result["bots"].append(d)
         else:
             result["contacts"].append(d)
+            result["users"].append(d)
+        if t == "bot":
+            result["users"].append(d)
 
-    for key in ("channels", "groups", "contacts", "bots"):
+    for key in ("channels", "groups", "contacts", "bots", "users"):
         result[key].sort(key=lambda x: (x["title"] or "").lower())
     for items in result["access_categories"].values():
         items.sort(key=lambda x: (x["title"] or "").lower())
@@ -68,6 +75,7 @@ def count_dialogs(sorted_dialogs: dict) -> dict:
         "groups": len(sorted_dialogs["groups"]),
         "contacts": len(sorted_dialogs["contacts"]),
         "bots": len(sorted_dialogs["bots"]),
+        "users": len(sorted_dialogs["users"]),
         "owner": len(sorted_dialogs["access_categories"]["owner"]),
         "admin": len(sorted_dialogs["access_categories"]["admin"]),
         "member": len(sorted_dialogs["access_categories"]["member"]),

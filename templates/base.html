@@ -20,11 +20,11 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=5) }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=6) }}" />
 
     {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body{% if request.endpoint == "dashboard" %} class="replica-dashboard-page"{% endif %}>
 
 <!-- Loading overlay -->
 <div id="loading-overlay" class="d-none">
@@ -83,7 +83,7 @@
         crossorigin="anonymous"></script>
 
 <!-- Custom JS -->
-<script src="{{ url_for('static', filename='script.js', v=5) }}"></script>
+<script src="{{ url_for('static', filename='script.js', v=6) }}"></script>
 
 {% block extra_scripts %}{% endblock %}
 </body>

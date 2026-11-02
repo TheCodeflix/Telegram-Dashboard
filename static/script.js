@@ -5,7 +5,120 @@ document.addEventListener('DOMContentLoaded', function () {
     loadDeferredPhotos();
     observeDeferredThumbnails();
     initializeChannelTabs();
+    initializeDashboardReplica();
 });
+
+function initializeDashboardReplica() {
+    const dataElement = document.getElementById('dashboard-data');
+    const list = document.getElementById('items-list');
+    if (!dataElement || !list) return;
+
+    let chats;
+    try {
+        chats = JSON.parse(dataElement.textContent);
+    } catch (error) {
+        console.error('Could not read dashboard chat data:', error);
+        return;
+    }
+
+    let activeTab = 'groups';
+    const searchInput = document.getElementById('search-input');
+    const clearSearch = document.getElementById('clear-search');
+    const emptyState = document.getElementById('empty-state');
+    const profileView = document.getElementById('profile-view');
+    const mainListView = document.getElementById('main-list-view');
+
+    function render() {
+        const query = (searchInput?.value || '').trim().toLocaleLowerCase();
+        const filtered = chats.filter(chat => {
+            if (chat.category !== activeTab) return false;
+            return !query || [
+                chat.title, chat.username, chat.chat_id, chat.last_message, chat.type
+            ].some(value => String(value || '').toLocaleLowerCase().includes(query));
+        });
+
+        list.innerHTML = filtered.map(chat => {
+            const title = escHtml(chat.title || 'Unknown');
+            const preview = escHtml(
+                chat.last_message
+                || (chat.username ? `@${chat.username}` : '')
+                || (chat.member_count ? `${fmtNum(chat.member_count)} members` : '')
+                || (chat.type === 'bot' ? 'Bot' : chat.type || 'Telegram chat')
+            );
+            const date = formatDialogDate(chat.last_message_date);
+            const unread = Number(chat.unread_count) || 0;
+            const background = escHtml(chat.avatar_color || '#248bfe');
+            const letter = escHtml(chat.avatar_letter || title[0] || '?');
+            return `<li class="telegram-chat-row">
+                <a class="telegram-chat-link" href="${escHtml(chat.url)}">
+                    <span class="telegram-chat-avatar" data-photo-fallback style="background:${background}">${letter}</span>
+                    <img class="telegram-chat-avatar" data-photo-chat-id="${Number(chat.chat_id)}"
+                         data-photo-endpoint="${escHtml(document.querySelector('[data-photo-endpoint]')?.dataset.photoEndpoint || '')}"
+                         alt="" hidden>
+                    <span class="telegram-chat-content">
+                        <span class="telegram-chat-title-line">
+                            <span class="telegram-chat-title">${title}</span>
+                            ${chat.is_verified ? '<i class="fa-solid fa-circle-check telegram-chat-verified" title="Verified"></i>' : ''}
+                        </span>
+                        <span class="telegram-chat-preview">${preview}</span>
+                    </span>
+                    <span class="telegram-chat-meta">
+                        ${date ? `<time>${escHtml(date)}</time>` : ''}
+                        ${unread > 0 ? `<span class="telegram-unread-count">${unread > 99 ? '99+' : unread}</span>` : ''}
+                    </span>
+                </a>
+            </li>`;
+        }).join('');
+
+        emptyState.hidden = filtered.length > 0;
+        if (clearSearch) clearSearch.hidden = !query;
+        document.querySelectorAll('.telegram-tab-btn').forEach(button => {
+            const active = button.dataset.tab === activeTab;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+        loadDeferredPhotos(list);
+    }
+
+    document.querySelectorAll('.telegram-tab-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            activeTab = button.dataset.tab;
+            const scrollArea = document.getElementById('list-scroll-area');
+            if (scrollArea) scrollArea.scrollTop = 0;
+            render();
+        });
+    });
+
+    searchInput?.addEventListener('input', render);
+    clearSearch?.addEventListener('click', () => {
+        searchInput.value = '';
+        searchInput.focus();
+        render();
+    });
+
+    document.getElementById('open-profile-btn')?.addEventListener('click', () => {
+        if (mainListView) mainListView.hidden = true;
+        if (profileView) profileView.hidden = false;
+        loadDeferredPhotos(profileView);
+    });
+    document.getElementById('back-from-profile-btn')?.addEventListener('click', () => {
+        if (profileView) profileView.hidden = true;
+        if (mainListView) mainListView.hidden = false;
+    });
+
+    render();
+}
+
+function formatDialogDate(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) return '';
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+        return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 const thumbnailQueues = new Map();
 const thumbnailTimers = new Map();
@@ -151,8 +264,9 @@ async function loadAdmins() {
     }
 }
 
-function loadDeferredPhotos() {
-    const images = [...document.querySelectorAll('img[data-photo-chat-id]')];
+function loadDeferredPhotos(root = document) {
+    if (!root) return;
+    const images = [...root.querySelectorAll('img[data-photo-chat-id]')];
     if (!images.length) return;
 
     const queues = new Map();
@@ -237,11 +351,13 @@ function loadDeferredPhotos() {
 // ─── Health check ─────────────────────────────────────────────────────────────
 
 async function checkHealth() {
+    const indicator = document.getElementById('health-indicator');
+    const dot = document.querySelector('.telegram-status-dot');
     try {
         const res = await fetch('/health');
         if (!res.ok) throw new Error(`Health check failed: HTTP ${res.status}`);
         const data = await res.json();
-        const el = document.getElementById('health-indicator');
+        const el = indicator;
         if (el) {
             el.classList.remove('status-active', 'status-inactive');
             if (data.status === 'healthy' && data.database === 'connected') {
@@ -254,10 +370,14 @@ async function checkHealth() {
                 el.textContent = 'Offline';
                 el.classList.add('status-inactive');
             }
+            if (dot) dot.classList.toggle('status-inactive', el.classList.contains('status-inactive'));
         }
     } catch {
-        const el = document.getElementById('health-indicator');
-        if (el) { el.textContent = 'Unreachable'; el.classList.add('status-inactive'); }
+        if (indicator) {
+            indicator.textContent = 'Unreachable';
+            indicator.classList.add('status-inactive');
+        }
+        if (dot) dot.classList.add('status-inactive');
     }
 }
 

@@ -126,6 +126,7 @@ async def _get_user_info(client: Client, me=None) -> dict:
         "last_name": me.last_name or "",
         "username": me.username or "",
         "phone": me.phone_number or "",
+        "is_bot": getattr(me, "is_bot", False),
         "is_premium": getattr(me, "is_premium", False),
         "dc_id": getattr(me, "dc_id", None),
         "photo": None,
@@ -142,7 +143,8 @@ async def _get_all_dialogs(
     tasks = []
     entries = []
 
-    async def build_dialog(chat):
+    async def build_dialog(dialog):
+        chat = dialog.chat
         try:
             chat_type = _resolve_chat_type(chat)
             role = "owner" if getattr(chat, "is_creator", False) else "member"
@@ -158,6 +160,27 @@ async def _get_all_dialogs(
                             role = "admin"
                     except Exception as e:
                         logger.debug("Could not resolve role in chat %s: %s", chat.id, e)
+            top_message = getattr(dialog, "top_message", None)
+            preview = ""
+            if top_message:
+                preview = (getattr(top_message, "text", None)
+                           or getattr(top_message, "caption", None)
+                           or "")
+                if not preview and getattr(top_message, "media", None):
+                    media_type = str(top_message.media).split(".")[-1].lower()
+                    preview = {
+                        "photo": "Photo",
+                        "video": "Video",
+                        "animation": "GIF",
+                        "document": "Document",
+                        "audio": "Audio",
+                        "voice": "Voice message",
+                        "video_note": "Video message",
+                        "sticker": "Sticker",
+                        "location": "Location",
+                        "contact": "Contact",
+                        "poll": "Poll",
+                    }.get(media_type, "Media")
             return {
                 "id": chat.id,
                 "title": getattr(chat, "title", None) or _full_name(chat),
@@ -168,6 +191,13 @@ async def _get_all_dialogs(
                 "is_verified": getattr(chat, "is_verified", False),
                 "is_scam": getattr(chat, "is_scam", False),
                 "invite_link": getattr(chat, "invite_link", None) or "",
+                "unread_count": getattr(dialog, "unread_messages_count", 0) or 0,
+                "last_message": preview[:120],
+                "last_message_date": (
+                    top_message.date.strftime("%Y-%m-%d %H:%M")
+                    if top_message and getattr(top_message, "date", None)
+                    else ""
+                ),
                 "photo": None,
             }
         except Exception as e:
@@ -177,7 +207,7 @@ async def _get_all_dialogs(
     async for dialog in client.get_dialogs(limit=limit):
         if peer_cache_namespace:
             await _remember_chat_peer(client, dialog.chat.id, peer_cache_namespace)
-        tasks.append(asyncio.create_task(build_dialog(dialog.chat)))
+        tasks.append(asyncio.create_task(build_dialog(dialog)))
         if len(tasks) == 4:
             entries.extend(await asyncio.gather(*tasks))
             tasks.clear()

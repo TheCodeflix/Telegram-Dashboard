@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Dark UI - Movable Sections</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- SortableJS for smooth drag & drop -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tgBg: '#0e1621',
+            tgCard: '#17212b',
+            tgHeader: '#17212b',
+            tgHover: '#202b36',
+            tgBlue: '#248bfe',
+            tgPillBg: '#1e2c3a',
+            tgBorder: '#232e3c',
+            tgTextMuted: '#7f91a4'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0e1621;
+      color: #ffffff;
+      user-select: none;
+    }
+    /* Drag and drop ghost placeholder styling */
+    .sortable-ghost {
+      opacity: 0.3;
+      background-color: #248bfe !important;
+      border: 2px dashed #60a5fa;
+    }
+    .sortable-drag {
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      background-color: #202b36;
+      cursor: grabbing;
+    }
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0e1621;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #232e3c;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #248bfe;
+    }
+  </style>
+</head>
+<body class="bg-tgBg min-h-screen flex flex-col items-center justify-start p-2 sm:p-4 md:p-6 select-none">
+
+  <!-- Main Container Mobile/Desktop Simulator -->
+  <div class="w-full max-w-md bg-tgBg rounded-2xl shadow-2xl overflow-hidden border border-tgBorder flex flex-col min-h-[92vh] relative">
+    
+    <!-- ================= MAIN LIST VIEW ================= -->
+    <div id="main-list-view" class="flex flex-col flex-1 h-full">
+      <!-- Top Telegram Header -->
+      <div class="bg-tgHeader px-4 py-3 border-b border-tgBorder flex items-center justify-between relative">
+        <!-- Top Left User Profile Icon -->
+        <button id="open-profile-btn" class="flex items-center justify-center focus:outline-none group" title="View Profile">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow border border-tgBorder group-hover:scale-105 transition-transform">
+            <i class="fa-solid fa-user"></i>
+          </div>
+        </button>
+
+        <!-- Centered Header Title -->
+        <h1 class="text-white font-bold text-lg tracking-wide absolute left-1/2 -translate-x-1/2">Telegram</h1>
+
+        <!-- Spacer for alignment -->
+        <div class="w-8"></div>
+      </div>
+
+      <!-- Search Input -->
+      <div class="px-3 pt-3 pb-1 bg-tgBg">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-tgTextMuted text-sm"></i>
+          <input type="text" id="search-input" placeholder="Search chats, groups, channels..." 
+            class="w-full bg-tgCard text-white text-sm pl-9 pr-8 py-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-tgBlue border border-tgBorder transition" />
+          <button id="clear-search" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-tgTextMuted hover:text-white text-xs">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs Pill Bar (Exact match with provided image) -->
+      <div class="p-3 bg-tgBg border-b border-tgBorder/40">
+        <div class="bg-[#16212d] p-1.5 rounded-full flex items-center justify-between gap-1 border border-tgBorder/60 shadow-inner">
+          
+          <!-- Channels Tab -->
+          <button data-tab="channels" class="tab-btn flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-full transition-all duration-200">
+            <span class="tab-title text-sm font-semibold tracking-tight leading-tight">Channel's</span>
+            <span class="sub-badge mt-0.5 text-[11px] font-medium px-2.5 py-0.2 rounded-full transition-colors">0</span>
+          </button>
+
+          <!-- Groups Tab (Active Default) -->
+          <button data-tab="groups" class="tab-btn flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-full transition-all duration-200">
+            <span class="tab-title text-sm font-semibold tracking-tight leading-tight">Group's</span>
+            <span class="sub-badge mt-0.5 text-[11px] font-medium px-2.5 py-0.2 rounded-full transition-colors">0</span>
+          </button>
+
+          <!-- Users Tab -->
+          <button data-tab="users" class="tab-btn flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-full transition-all duration-200">
+            <span class="tab-title text-sm font-semibold tracking-tight leading-tight">Users</span>
+            <span class="sub-badge mt-0.5 text-[11px] font-medium px-2.5 py-0.2 rounded-full transition-colors">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Movable Items List Container -->
+      <div class="flex-1 overflow-y-auto" id="list-scroll-area">
+        <ul id="items-list" class="divide-y divide-tgBorder/40">
+          <!-- Dynamic Items render here -->
+        </ul>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="hidden flex-col items-center justify-center py-16 text-center px-4">
+          <div class="w-16 h-16 rounded-full bg-tgCard flex items-center justify-center text-tgTextMuted text-2xl mb-3">
+            <i class="fa-solid fa-folder-open"></i>
+          </div>
+          <p class="text-white font-medium text-sm">No items found</p>
+          <p class="text-tgTextMuted text-xs mt-1">Try searching or add a new item to this category.</p>
+        </div>
+      </div>
+
+      <!-- Bottom Status Bar -->
+      <footer class="bg-tgHeader px-4 py-2.5 border-t border-tgBorder text-xs text-tgTextMuted flex justify-between items-center text-[11px]">
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Synced live
+        </span>
+        <span>Telegram Replica Mode</span>
+      </footer>
+    </div>
+
+    <!-- ================= USER PROFILE VIEW SCREEN ================= -->
+    <div id="profile-view" class="hidden absolute inset-0 bg-[#0e1621] z-50 flex-col h-full">
+      <!-- Profile Header -->
+      <div class="bg-tgHeader px-4 py-3 border-b border-tgBorder flex items-center gap-4 shrink-0">
+        <button id="back-from-profile-btn" class="text-tgTextMuted hover:text-white p-1 rounded-full transition">
+          <i class="fa-solid fa-arrow-left text-lg"></i>
+        </button>
+        <h2 class="text-white font-semibold text-lg tracking-wide">User Info</h2>
+      </div>
+
+      <!-- Profile Content Scroll Area -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- 
+          =========================================================================
+          DEVELOPER INSTRUCTION FOR ACTIVE BOT / USER DASHBOARD DATA:
+          -------------------------------------------------------------------------
+          Display the profile details of whichever Bot or User dashboard is currently active.
+          Fetch real-time data from your Bot Database / Auth API:
+          - Full Name
+          - Username (@username)
+          - Telegram User / Bot ID
+          - Phone Number (Show real number if available; else fallback to "Hidden / Not Available")
+          - Data Center (DC) info
+          =========================================================================
+        -->
+        <!-- Profile Banner Card -->
+        <div class="bg-tgCard border border-tgBorder/60 rounded-2xl p-5 flex flex-col items-center text-center shadow-lg relative">
+          <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white text-3xl font-bold mb-3 shadow-xl border-2 border-tgBlue">
+            <i class="fa-solid fa-user"></i>
+          </div>
+          <h3 id="profile-full-name" class="text-white font-bold text-lg">Alex Developer</h3>
+          <p id="profile-status" class="text-emerald-400 text-xs font-medium mt-0.5">● Online</p>
+        </div>
+
+        <!-- Account Details Section -->
+        <div class="bg-tgCard border border-tgBorder/60 rounded-2xl overflow-hidden shadow-lg divide-y divide-tgBorder/40">
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-tgBlue flex items-center justify-center">
+                <i class="fa-solid fa-id-card text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Full Name</p>
+                <p id="profile-name-val" class="text-white text-sm font-semibold mt-0.5">Alex Developer</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                <i class="fa-solid fa-at text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Username</p>
+                <p id="profile-username-val" class="text-white text-sm font-semibold mt-0.5">@alex_dev</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                <i class="fa-solid fa-fingerprint text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">User ID</p>
+                <p id="profile-userid-val" class="text-white text-sm font-mono font-semibold mt-0.5">784910293</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <i class="fa-solid fa-phone text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Phone Number</p>
+                <!-- Shows phone if real member; otherwise displays "Hidden / Not Available" -->
+                <p id="profile-phone-val" class="text-white text-sm font-semibold mt-0.5">+1 202 555 0192</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <i class="fa-solid fa-server text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Data Center</p>
+                <p id="profile-dc-val" class="text-white text-sm font-semibold mt-0.5">DC4 - Amsterdam</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 
+          =========================================================================
+          DEVELOPER INSTRUCTION FOR CHAT OWNERSHIP & MEMBERSHIP STATS:
+          -------------------------------------------------------------------------
+          Check permissions/roles for each chat linked to the active Bot/User in Database:
+          1. Owner (Creator): Filter chats where user status is 'creator' (Owner in X channels/groups).
+          2. Admin: Filter chats where user has admin rights ('administrator').
+          3. Member: Filter chats where user is a regular participant ('member').
+          
+          Dynamically populate stats:
+          - profile-owner-count.textContent = ownerCount;
+          - profile-admin-count.textContent = adminCount;
+          - profile-member-count.textContent = memberCount;
+          =========================================================================
+        -->
+        <!-- Chat Roles & Membership Statistics Section -->
+        <div class="bg-tgCard border border-tgBorder/60 rounded-2xl overflow-hidden shadow-lg divide-y divide-tgBorder/40">
+          <div class="px-4 py-3 flex items-center justify-between bg-tgHeader/50">
+            <h4 class="text-xs font-bold text-tgTextMuted uppercase tracking-wider">Chat Privileges & Stats</h4>
+            <span class="text-[10px] bg-tgBlue/20 text-tgBlue px-2 py-0.5 rounded-full font-medium">Role Analysis</span>
+          </div>
+
+          <!-- Owner In Stat -->
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                <i class="fa-solid fa-crown text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Owner In</p>
+                <p class="text-white text-xs mt-0.5">Channels / Groups Created</p>
+              </div>
+            </div>
+            <span id="profile-owner-count" class="text-amber-400 font-bold text-sm bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">3 Chats</span>
+          </div>
+
+          <!-- Admin In Stat -->
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-tgBlue flex items-center justify-center">
+                <i class="fa-solid fa-user-shield text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Admin In</p>
+                <p class="text-white text-xs mt-0.5">Admin Privileges Active</p>
+              </div>
+            </div>
+            <span id="profile-admin-count" class="text-tgBlue font-bold text-sm bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">5 Chats</span>
+          </div>
+
+          <!-- Member In Stat -->
+          <div class="px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                <i class="fa-solid fa-users text-sm"></i>
+              </div>
+              <div>
+                <p class="text-tgTextMuted text-[11px] font-medium uppercase tracking-wider">Member In</p>
+                <p class="text-white text-xs mt-0.5">Normal Member Chats</p>
+              </div>
+            </div>
+            <span id="profile-member-count" class="text-emerald-400 font-bold text-sm bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">12 Chats</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CHAT VIEW SCREEN ================= -->
+    <div id="chat-view" class="hidden absolute inset-0 bg-[#0e1621] z-40 flex-col h-full">
+      <!-- Chat Header -->
+      <div class="bg-tgHeader px-4 py-2.5 border-b border-tgBorder flex items-center justify-between shrink-0 relative">
+        <div class="flex items-center gap-3">
+          <button id="back-to-list-btn" class="text-tgTextMuted hover:text-white p-1 rounded-full transition">
+            <i class="fa-solid fa-arrow-left text-lg"></i>
+          </button>
+          <div id="chat-header-avatar"></div>
+          <div>
+            <h2 id="chat-header-name" class="text-white font-semibold text-sm leading-tight"></h2>
+            <p id="chat-header-status" class="text-tgTextMuted text-xs">bot / dynamic channel</p>
+          </div>
+        </div>
+        <div class="relative">
+          <button id="chat-menu-btn" class="text-tgTextMuted p-1.5 hover:text-white transition rounded-full hover:bg-tgHover">
+            <i class="fa-solid fa-ellipsis-vertical text-base"></i>
+          </button>
+
+          <!-- Telegram Chat Menu Dropdown -->
+          <div id="chat-menu-dropdown" class="hidden absolute right-0 top-10 w-52 bg-tgCard border border-tgBorder rounded-xl shadow-2xl py-1.5 z-50 transform transition-all duration-150">
+            <button class="chat-menu-item w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-tgHover flex items-center gap-3 transition" data-action="members">
+              <i class="fa-solid fa-users text-tgBlue w-4 text-center"></i>
+              <span>Members</span>
+            </button>
+            <button class="chat-menu-item w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-tgHover flex items-center gap-3 transition" data-action="invite">
+              <i class="fa-solid fa-link text-emerald-400 w-4 text-center"></i>
+              <span>Invite Link</span>
+            </button>
+            <button class="chat-menu-item w-full px-4 py-2.5 text-left text-sm text-gray-200 hover:bg-tgHover flex items-center gap-3 transition border-t border-tgBorder/50 mt-1 pt-2.5" data-action="ownership">
+              <i class="fa-solid fa-crown text-amber-400 w-4 text-center"></i>
+              <span>Transfer Ownership</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Messages Scrollable Area -->
+      <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0e1621] bg-[radial-gradient(#17212b_1px,transparent_1px)] [background-size:16px_16px]">
+  <!-- Toast / Permission Error Banner (Demo UI Notification) -->
+  <div id="toast-notification" class="fixed top-5 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl z-50 flex items-center gap-2 hidden transition-all duration-300 backdrop-blur-sm border border-red-400/40">
+    <i class="fa-solid fa-circle-exclamation text-sm"></i>
+    <span id="toast-message">Permission denied</span>
+  </div>
+
+  <script>
+    // Avatar Preset Styles with Clean Demo Icons (Channels, Groups, Users)
+    const DEMO_AVATARS = {
+      groups: `
+        <div class="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md text-white text-lg font-bold">
+          <i class="fa-solid fa-users"></i>
+        </div>`,
+      channels: `
+        <div class="w-11 h-11 rounded-full bg-gradient-to-tr from-sky-500 to-cyan-400 flex items-center justify-center shadow-md text-white text-lg font-bold">
+          <i class="fa-solid fa-bullhorn"></i>
+        </div>`,
+      users: `
+        <div class="w-11 h-11 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-md text-white text-lg font-bold">
+          <i class="fa-solid fa-user"></i>
+        </div>`
+    };
+
+    // =========================================================================
+    // DEVELOPER INSTRUCTION / GUIDE FOR CHAT & MEDIA HANDLING:
+    // -------------------------------------------------------------------------
+    // IMPORTANT: This Web UI is strictly designed for VIEWING message content 
+    // (Text, Photos, Videos, Documents metadata).
+    //
+    // NO FILE DOWNLOAD SYSTEM SHOULD BE IMPLEMENTED HERE.
+    // If the user wishes to access/download the actual original file or document, 
+    // redirect them to Telegram using the respective Telegram User / Channel / Bot ID link:
+    // e.g., https://t.me/<username> or https://t.me/c/<channel_id>/<message_id>
+    // =========================================================================
+    const DEMO_CHAT_MESSAGES = [
+      {
+        id: 1,
+        type: 'text',
+        text: 'Welcome to the channel! Here you will get daily logs, updates and latest code releases.',
+        time: '10:14 AM'
+      },
+      {
+        id: 2,
+        type: 'photo',
+        url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+        caption: '🔥 New UI design system preview is live! Check out the dark theme aesthetic.',
+        time: '10:15 AM'
+      },
+      {
+        id: 3,
+        type: 'video',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        caption: '🎥 Demo Video showing how the bot interacts with Telegram APIs smoothly.',
+        time: '10:18 AM'
+      },
+      {
+        /* 
+           DEVELOPER NOTE FOR DOCUMENTS:
+           Only display document metadata (file name, size, icon, caption).
+           No download or redirect functionality required.
+        */
+        id: 4,
+        type: 'document',
+        fileName: 'Project_Report_v2.pdf',
+        fileSize: '1.4 MB',
+        caption: '📁 Project PDF document report.',
+        time: '10:20 AM'
+      },
+      {
+        id: 5,
+        type: 'text',
+        text: 'If you have any questions or feedback, feel free to contact support anytime.',
+        time: '10:22 AM'
+      }
+    ];
+
+    // =========================================================================
+    // DATA SOURCE & BOT DATABASE INTEGRATION GUIDE
+    // =========================================================================
+    let demoData = {
+      groups: [
+        { id: '1', title: 'PREMIUM LOGS', badge: 'xyz' },
+        { id: '2', title: 'The CodeFlix', badge: 'xyz' },
+        { id: '3', title: 'The CodeFlix Support', badge: 'xyz' },
+        { id: '4', title: 'LiveCraft Bots', badge: 'xyz' },
+        { id: '5', title: 'Livecraft Support', badge: 'xyz' }
+      ],
+      channels: [
+        { id: '6', title: 'Official Announcements', badge: '45.2k' },
+        { id: '7', title: 'Movie Release Logs', badge: '12.8k' },
+        { id: '8', title: 'CodeFlix Channel', badge: '98.1k' },
+        { id: '9', title: 'Tech News & Updates', badge: '23.4k' },
+        { id: '10', title: 'Daily Tips & Tricks', badge: '15.9k' }
+      ],
+      users: [
+        { id: '11', title: 'CodeFlix Admin', badge: 'online' },
+        { id: '12', title: 'LiveCraft Bot Support', badge: 'bot' },
+        { id: '13', title: 'Rahul Sharma', badge: 'online' },
+        { id: '14', title: 'Amit Verma', badge: 'offline' },
+        { id: '15', title: 'Priya Patel', badge: 'online' }
+      ]
+    };
+
+    // State Variables
+    let activeTab = 'groups'; // 'channels', 'groups', 'users'
+    let searchQuery = '';
+
+    // Elements
+    const itemsListEl = document.getElementById('items-list');
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const searchInput = document.getElementById('search-input');
+    const clearSearchBtn = document.getElementById('clear-search');
+    const emptyStateEl = document.getElementById('empty-state');
+
+    // Chat Elements
+    const mainListView = document.getElementById('main-list-view');
+    const chatView = document.getElementById('chat-view');
+    const backToListBtn = document.getElementById('back-to-list-btn');
+    const chatHeaderName = document.getElementById('chat-header-name');
+    const chatHeaderStatus = document.getElementById('chat-header-status');
+    const chatHeaderAvatar = document.getElementById('chat-header-avatar');
+    const chatMessagesContainer = document.getElementById('chat-messages-container');
+
+    // Chat Dropdown Menu Elements
+    const chatMenuBtn = document.getElementById('chat-menu-btn');
+    const chatMenuDropdown = document.getElementById('chat-menu-dropdown');
+    const toastNotification = document.getElementById('toast-notification');
+    const toastMessage = document.getElementById('toast-message');
+
+    // Profile Screen Elements
+    const openProfileBtn = document.getElementById('open-profile-btn');
+    const profileView = document.getElementById('profile-view');
+    const backFromProfileBtn = document.getElementById('back-from-profile-btn');
+
+    let activeChatCategory = 'groups';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTabs();
+      renderList();
+      setupEventListeners();
+    });
+
+    // Render Tab Header Pills
+    function renderTabs() {
+      tabBtns.forEach(btn => {
+        const tabKey = btn.dataset.tab;
+        const isActive = tabKey === activeTab;
+        const badgeEl = btn.querySelector('.sub-badge');
+
+        if (isActive) {
+          btn.className = 'tab-btn flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-full bg-tgBlue text-white shadow-lg transition-all duration-200 cursor-pointer';
+          badgeEl.className = 'sub-badge mt-0.5 text-[11px] font-medium px-2.5 py-0.2 rounded-full bg-white/20 text-white';
+        } else {
+          btn.className = 'tab-btn flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded-full text-tgTextMuted hover:text-white hover:bg-tgPillBg/50 transition-all duration-200 cursor-pointer';
+          badgeEl.className = 'sub-badge mt-0.5 text-[11px] font-medium px-2.5 py-0.2 rounded-full bg-[#1b2736] text-tgTextMuted';
+        }
+
+        const itemCount = demoData[tabKey] ? demoData[tabKey].length : 0;
+        badgeEl.textContent = `${itemCount}`;
+      });
+    }
+
+    // Render the list of items
+    function renderList() {
+      const currentItems = demoData[activeTab] || [];
+      const filtered = currentItems.filter(item => 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      if (filtered.length === 0) {
+        itemsListEl.innerHTML = '';
+        emptyStateEl.classList.remove('hidden');
+        emptyStateEl.classList.add('flex');
+        return;
+      }
+
+      emptyStateEl.classList.add('hidden');
+      emptyStateEl.classList.remove('flex');
+
+      itemsListEl.innerHTML = filtered.map(item => {
+        const avatarHtml = DEMO_AVATARS[activeTab] || DEMO_AVATARS.groups;
+        return `
+          <li data-id="${item.id}" onclick="openChat('${escapeHtml(item.title)}', '${activeTab}')" class="list-item px-4 py-3.5 hover:bg-tgHover/60 transition flex items-center justify-between border-b border-tgBorder/20 cursor-pointer">
+            <div class="flex items-center gap-3.5 flex-1 min-w-0">
+              <!-- Demo Icon Avatar -->
+              <div class="shrink-0 flex items-center justify-center">
+                ${avatarHtml}
+              </div>
+
+              <!-- Item Information -->
+              <div class="truncate flex-1">
+                <h4 class="text-white font-semibold text-[15px] tracking-wide truncate">
+                  ${escapeHtml(item.title)}
+                </h4>
+              </div>
+            </div>
+          </li>
+        `;
+      }).join('');
+    }
+
+    // Open Chat View with Selected Item Details & Demo Messages
+    window.openChat = function(title, category) {
+      activeChatCategory = category;
+      chatHeaderName.textContent = title;
+      chatHeaderStatus.textContent = category === 'channels' ? 'subscribers channel' : (category === 'groups' ? 'members group' : 'online user');
+      chatHeaderAvatar.innerHTML = DEMO_AVATARS[category] || DEMO_AVATARS.groups;
+
+      // Hide dropdown menu if open
+      chatMenuDropdown.classList.add('hidden');
+
+      // Only show top-right menu for Channels and Groups (Hide for individual Users)
+      if (category === 'users') {
+        chatMenuBtn.classList.add('hidden');
+      } else {
+        chatMenuBtn.classList.remove('hidden');
+      }
+
+      // Render Messages
+      chatMessagesContainer.innerHTML = DEMO_CHAT_MESSAGES.map(msg => renderMessageCard(msg)).join('');
+
+      // Show Chat Screen
+      mainListView.classList.add('hidden');
+      chatView.classList.remove('hidden');
+      chatView.classList.add('flex');
+
+      // Auto scroll to bottom
+      chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    };
+
+    // Render Chat Message Cards based on type (Text, Photo, Video, Document)
+    function renderMessageCard(msg) {
+      let contentHtml = '';
+
+      if (msg.type === 'text') {
+        contentHtml = `<p class="text-white text-sm leading-relaxed">${escapeHtml(msg.text)}</p>`;
+      } else if (msg.type === 'photo') {
+        contentHtml = `
+          <div class="rounded-lg overflow-hidden mb-1.5 border border-tgBorder/40">
+            <img src="${msg.url}" class="w-full h-44 object-cover" alt="photo" />
+          </div>
+          ${msg.caption ? `<p class="text-white text-sm leading-relaxed">${escapeHtml(msg.caption)}</p>` : ''}
+        `;
+      } else if (msg.type === 'video') {
+        contentHtml = `
+          <div class="rounded-lg overflow-hidden mb-1.5 border border-tgBorder/40 bg-black">
+            <video controls class="w-full max-h-52 object-contain">
+              <source src="${msg.url}" type="video/mp4">
+              Your browser does not support video.
+            </video>
+          </div>
+          ${msg.caption ? `<p class="text-white text-sm leading-relaxed">${escapeHtml(msg.caption)}</p>` : ''}
+        `;
+      } else if (msg.type === 'document') {
+        contentHtml = `
+          <div class="bg-tgBg p-3 rounded-xl border border-tgBorder/60 mb-1.5 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center shrink-0 text-lg">
+              <i class="fa-solid fa-file-pdf"></i>
+            </div>
+            <div class="truncate flex-1">
+              <p class="text-white text-xs font-semibold truncate">${escapeHtml(msg.fileName)}</p>
+              <p class="text-tgTextMuted text-[11px]">${msg.fileSize}</p>
+            </div>
+          </div>
+          ${msg.caption ? `<p class="text-white text-sm leading-relaxed">${escapeHtml(msg.caption)}</p>` : ''}
+        `;
+      }
+
+      return `
+        <div class="bg-tgCard border border-tgBorder/40 p-3 rounded-2xl max-w-[85%] shadow-md self-start relative">
+          ${contentHtml}
+          <span class="block text-right text-[10px] text-tgTextMuted mt-1">${msg.time}</span>
+        </div>
+      `;
+    }
+
+    // Helper functions & Event Listeners
+    function setupEventListeners() {
+      // Open Profile Screen from Top-Left Icon
+      openProfileBtn.addEventListener('click', () => {
+        // =========================================================================
+        // DEVELOPER INSTRUCTION FOR ACTIVE USER / BOT PROFILE DATA:
+        // -------------------------------------------------------------------------
+        // Dynamically fetch and display the data of the currently logged-in User/Bot dashboard:
+        // 1. Fetch active session/user object (e.g. `const currentUser = await fetchActiveDashboardUser();`)
+        // 2. Populate values:
+        //    - profileFullName.textContent = currentUser.fullName;
+        //    - profileUsername.textContent = currentUser.username;
+        //    - profileUserId.textContent = currentUser.id;
+        //    - profilePhone.textContent = currentUser.phone ? currentUser.phone : 'Not Available';
+        //    - profileDataCenter.textContent = currentUser.dc ? currentUser.dc : 'DC4 - Amsterdam';
+        // =========================================================================
+        mainListView.classList.add('hidden');
+        profileView.classList.remove('hidden');
+        profileView.classList.add('flex');
+      });
+
+      // Back from Profile View to Main List
+      backFromProfileBtn.addEventListener('click', () => {
+        profileView.classList.add('hidden');
+        profileView.classList.remove('flex');
+        mainListView.classList.remove('hidden');
+      });
+
+      // Back to List Screen button from Chat
+      backToListBtn.addEventListener('click', () => {
+        chatView.classList.add('hidden');
+        chatView.classList.remove('flex');
+        mainListView.classList.remove('hidden');
+        chatMenuDropdown.classList.add('hidden');
+      });
+
+      // Toggle Chat Header Menu Dropdown
+      chatMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        chatMenuDropdown.classList.toggle('hidden');
+      });
+
+      // Close Menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!chatMenuDropdown.contains(e.target) && e.target !== chatMenuBtn) {
+          chatMenuDropdown.classList.add('hidden');
+        }
+      });
+
+      // Handle Menu Actions (Members, Invite Link, Transfer Ownership)
+      document.querySelectorAll('.chat-menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          chatMenuDropdown.classList.add('hidden');
+          const action = e.currentTarget.dataset.action;
+
+          // =========================================================================
+          // DEVELOPER GUIDE FOR PERMISSIONS & ACTIONS:
+          // -------------------------------------------------------------------------
+          // Replace the demo check below with real Telegram Bot / Admin API Permissions.
+          // Example logic:
+          //   if (!userPermissions.can_invite_users) { showPermissionError("You don't have permission to create/view invite links."); }
+          //   if (!userPermissions.is_owner) { showPermissionError("Only the chat owner can transfer ownership."); }
+          // =========================================================================
+
+          if (action === 'members') {
+            showToast('Opening Members list...');
+          } else if (action === 'invite') {
+            // Permission check demo
+            showToast('Error: You lack permissions to manage invite links!', true);
+          } else if (action === 'ownership') {
+            // Permission check demo
+            showToast('Error: Only the primary Owner can transfer ownership!', true);
+          }
+        });
+      });
+
+      // Tab switching listeners
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTab = btn.dataset.tab;
+          renderTabs();
+          renderList();
+        });
+      });
+
+      // Search field filtering
+      searchInput.addEventListener('input', (e) => {
+        searchQuery = e.target.value.trim();
+        clearSearchBtn.classList.toggle('hidden', searchQuery === '');
+        renderList();
+      });
+
+      clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        clearSearchBtn.classList.add('hidden');
+        renderList();
+      });
+    }
+
+    // Helper for Toast / Error Notification Banner
+    function showToast(msg, isError = false) {
+      toastMessage.textContent = msg;
+      toastNotification.className = `fixed top-5 left-1/2 -translate-x-1/2 text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl z-50 flex items-center gap-2 transition-all duration-300 backdrop-blur-sm border ${
+        isError 
+          ? 'bg-red-500/90 text-white border-red-400/40 shadow-red-500/30' 
+          : 'bg-tgBlue/90 text-white border-blue-400/40 shadow-blue-500/30'
+      }`;
+      toastNotification.classList.remove('hidden');
+
+      setTimeout(() => {
+        toastNotification.classList.add('hidden');
+      }, 3000);
+    }
+
+    // Helper for escaping strings safely
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, function(m) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        }[m];
+      });
+    }
+  </script>
+</body>
+</html>
